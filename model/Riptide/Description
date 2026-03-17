@@ -1,0 +1,3 @@
+  Metabolic flux distributions were estimated using the RIPTiDe algorithm (https://github.com/mjenior/riptide), with 1,000 flux samples generated for each model. Input models derived from ftINIT were used for flux estimation.  
+  The resulting flux distributions were further analyzed to quantify differences between conditions using Cliff’s delta and to identify key reactions using a random forest model.  
+  Scripts for flux sampling, statistical analysis, and visualization, along with the corresponding results, are provided in this directory.
