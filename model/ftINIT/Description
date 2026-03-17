@@ -1,0 +1,4 @@
+- `ftinit/`  
+  Reconstruction of context-specific metabolic models using the ftINIT algorithm based on the Human1 template and transcriptomic data. The implementation follows the standard workflow described in the Human-GEM documentation:  
+  https://sysbiochalmers.github.io/Human-GEM-guide/gem_extraction/
+  
