@@ -15,10 +15,10 @@ This study investigates cell-type-specific metabolic responses to retinol treatm
 - Flux analysis and machine learning (random forest, Cliff’s delta) to identify key reactions
 
 ## Repository Structure
-data/ # processed datasets used in the study
-scripts/ # single-omics and cross-omics analysis scripts
-model/ # genome-scale metabolic modeling code and results
-figures/ # visualization scripts
+- data/ # Processed datasets used in the study
+- scripts/ # Single-omics and cross-omics analysis scripts
+- model/ # Genome-scale metabolic modeling code and results
+- figures/ # Visualization scripts
 
 ## Requirements
 
