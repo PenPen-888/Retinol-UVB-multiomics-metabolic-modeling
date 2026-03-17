@@ -1,1 +1,15 @@
-The original data
+## Dataset Description
+
+The `data/` directory contains original datasets used for downstream analyses:
+
+- `meta_intensity_pos.xlsx`  
+  Metabolomics data acquired in positive ion mode. Rows represent metabolites and columns represent samples. Values correspond to processed intensity measurements.
+
+- `meta_intensity_neg.xlsx`  
+  Metabolomics data acquired in negative ion mode with the same structure as above.
+
+- `Proteome.xlsx`  
+  Processed proteomics data. Rows represent proteins (gene symbols or protein IDs), and columns represent samples. Values correspond to normalized protein abundance.
+
+- `Transcriptome.xlsx`  
+  Transcriptomic count data. Rows represent genes and columns represent samples. Raw counts were used for downstream analysis.
