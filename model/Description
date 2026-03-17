@@ -1,0 +1,13 @@
+## Genome-scale metabolic modeling (GEMs)
+
+The `model/` directory contains scripts and results related to genome-scale metabolic modeling and flux analysis:
+
+- `ftINIT/`  
+  Reconstruction of context-specific metabolic models using the ftINIT algorithm based on the Human1 template and transcriptomic data.
+- `Kiwi/`  
+  Visualization of reporter metabolites.
+  
+- `Riptide/`  
+  Estimation of metabolic flux distributions using the RIPTiDe algorithm, including flux sampling results (1,000 samples per model) with further analysis code .
+
+
