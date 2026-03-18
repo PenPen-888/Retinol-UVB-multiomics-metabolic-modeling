@@ -1,0 +1,9 @@
+## Figures
+
+The `figures/` directory contains scripts used to generate the visualizations in this study, including both single-omics and multi-omics analyses.
+
+Scripts are organized by figure type (e.g., nine-quadrant scatter plots, enrichment plots, and multi-omics visualizations), rather than by data modality, to reflect their direct correspondence to the figures presented in the manuscript.
+
+Some visualization scripts are shared across multiple omics layers (e.g., transcriptomics and proteomics) and are implemented in a generalized manner.
+
+The scripts reproduce the main figures and may require minor adjustments depending on the computational environment.
