@@ -1,0 +1,95 @@
+# Kiwi-based structural analysis workflow
+#
+# This workflow performs structural interpretation of context-specific metabolic models based on gene-set analysis and network topology, adapted from the original Kiwi framework:
+# https://github.com/SysBioChalmers/Kiwi
+#
+# Modifications were introduced to ensure compatibility with updated Python environments and to accommodate study-specific data structures.
+
+####Example:HFF(UA vs UVB)
+###1.GSA analysis (Perform in R)
+library(piano)
+library(snow)
+library(snowfall)
+library(edgeR)
+library(tidyverse)
+library(openxlsx)
+deg=read.delim("HFF_UAvsHFF_UVB_deg.xls")
+deg_unique <- deg %>%
+    group_by(gene_name) %>%
+    slice_min(pvalue, with_ties = FALSE)
+gene_stats <- setNames(deg_unique$pvalue, deg_unique$gene_name)
+gene_dirs  <- setNames(deg_unique$log2FoldChange, deg_unique$gene_name)
+
+gsc_metabo = read.table("gene_metabolite_gsc(formal).txt")
+gsc_metabo = loadGSC(gsc_metabo)
+gsc_pathway = read.table("pathway_gene_gsc.txt")
+gsc_pathway= loadGSC(gsc_pathway)
+
+gsa_metabo <- runGSA(gene_stats,
+                     directions = gene_dirs,
+                     geneSetStat = 'mean',
+                     gsc = gsc_metabo,
+                     adjMethod = 'fdr',
+                     nPerm = 10000,
+                     verbose = TRUE)
+writeFilesForKiwi(gsa_metabo, label = "HFF_AB_metabo", overwrite = FALSE)
+gsa_pathway <- runGSA(gene_stats,
+                      directions = gene_dirs,
+                      geneSetStat = 'mean',
+                      gsc = gsc_pathway,
+                      adjMethod = 'fdr',
+                      nPerm = 10000,
+                      verbose = TRUE)
+writeFilesForKiwi(gsa_pathway, label = "HFF_AB_pathway", overwrite = FALSE)
+
+###2. Run the python script 'test.py'
+###3. Visualization (In R)
+##Heatmap
+library(dplyr)
+source("E:/Data and Code/Code/model/kiwi/kiwi_heatmap.R")
+meta_fil = read.csv("meta_fil.csv")
+meta_fil = kiwi_heatmap(
+    df =meta_fil,
+    title = "Gene-metabolites scores \n -HFF:UA vs UVB",
+    width = 12,
+    height = 12,
+    filter_gene = TRUE,
+    filter_metabo = TRUE,
+    filter_method = "combined",
+    top_n = 30,
+    top_n_metab = 20,
+    save_score_table = TRUE
+)
+
+##Dot plot
+source("E:/Data and Code/Code/model/kiwi/kiwi_dot.R")
+meta_fil = read.csv("meta_fil.csv")
+meta_fil = kiwi_dot(
+df =meta_fil,
+title = "Gene-metabolites scores \n -HFF:UA vs UVB",
+save_prefix = 'kiwi_dot',
+width = 10,
+height = 7.5,
+filter_gene = TRUE,
+filter_metabo = TRUE,
+filter_method = "combined",
+top_n = 30,
+top_n_metab = 20,
+save_score_table = TRUE
+)
+
+source("E:/Data and Code/Code/model/kiwi/kiwi_dot.R")
+meta_fil = read.csv("meta_fil.csv")
+meta_fil = kiwi_dot(
+df =meta_fil,
+title = "Gene-metabolites scores \n -Hacat:UA vs UVB",
+save_prefix = 'kiwi_dot',
+width = 10,
+height = 7.5,
+filter_gene = TRUE,
+filter_metabo = TRUE,
+filter_method = "combined",
+top_n = 30,
+top_n_metab = 20,
+save_score_table = TRUE
+)
