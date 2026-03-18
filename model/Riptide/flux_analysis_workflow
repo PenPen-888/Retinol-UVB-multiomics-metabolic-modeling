@@ -1,0 +1,583 @@
+# --------------------------------------------------
+# Downstream analysis of RIPTiDe-derived flux distributions
+#
+# This script provides example workflows for analyzing
+# flux sampling results, including:
+# - differential analysis (Cliff's delta)
+# - random forest modeling
+# - visualization (ridgeline and density plots)
+#
+# All analyses are performed based on flux distributions
+# obtained from RIPTiDe sampling.
+# --------------------------------------------------
+###1.Reduction
+##Example: Hacat ( UA vs UVB )
+library(readr)
+library(dplyr)
+flux <- list.files(pattern = "\\.tsv$", full.names = FALSE)
+for (file in flux) {
+  var_name <- tools::file_path_sans_ext(basename(file))
+  data <- read_tsv(file) %>% select(-1)  
+  assign(var_name, data, envir = .GlobalEnv)
+}
+##Random sampling
+sub_sample <- sample(1:500, 250, replace=FALSE)
+WT <- WT[sub_sample,]
+UVB <- UVB[sub_sample, ]
+UA <- UA[sub_sample, ]
+WT$X <- NULL
+WT_names <- paste('WT_', 1:nrow(WT), sep='')
+rownames(WT) <- WT_names
+UVB$X <- NULL
+UVB_names <- paste('UVB_', 1:nrow(UVB), sep='')
+rownames(UVB) <- UVB_names
+UA$X <- NULL
+UA_names <- paste('UA_', 1:nrow(UA), sep='')
+rownames(UA) <- UA_names
+
+
+#metadata
+WT_metadata <- cbind(WT_names, rep('WT', length(WT_names)), rep('minimal', length(WT_names)))
+UVB_metadata <- cbind(UVB_names, rep('UVB', length(UVB_names)), rep('minimal', length(UVB_names)))
+UA_metadata <- cbind(UA_names, rep('UA', length(UA_names)), rep('minimal', length(UA_names)))
+
+
+metadata <- rbind(WT_metadata, UVB_metadata, UA_metadata)
+colnames(metadata) <- c('label', 'group', 'media')
+metadata <- as.data.frame(metadata)
+metadata$group <- as.factor(metadata$group)
+metadata$media <- as.factor(metadata$media)
+
+WT_metadata <- as.data.frame(WT_metadata)
+colnames(WT_metadata) <- c('label', 'group', 'media')
+WT_metadata$media <- NULL
+WT_metadata$group <- as.factor(WT_metadata$group)
+
+UVB_metadata <- as.data.frame(UVB_metadata)
+colnames(UVB_metadata) <- c('label', 'group', 'media')
+UVB_metadata$media <- NULL
+UVB_metadata$group <- as.factor(UVB_metadata$group)
+
+UA_metadata <- as.data.frame(UA_metadata)
+colnames(UA_metadata) <- c('label', 'group', 'media')
+UA_metadata$media <- NULL
+UA_metadata$group <- as.factor(UA_metadata$group)
+
+#Select  common reactions
+overlap <- Reduce(intersect, list(colnames(WT), colnames(UVB), colnames(UA)))
+WT <- WT[, overlap]
+UVB <- UVB[, overlap]
+UA <- UA[, overlap]=
+rownames(WT)=WT_names
+rownames(UVB)=UVB_names
+rownames(UA)=UA_names
+flux_samples <- rbind(WT,UVB,UA)
+
+all_tsne = Rtsne(flux_samples, dims =2, perplexity = 100, verbose = TRUE, max_iter = 5000)
+all_tsne_result = data.frame(all_tsne $Y)
+colnames(all_tsne_result)=c("tSNE1", "tSNE2")
+samples = rownames(flux_samples)
+data_group <- data.frame(
+  samples = samples,
+  group = gsub("_.*$", "", samples) 
+)
+all_tsne_result <- all_tsne_result %>%
+    mutate(samples= samples) %>%
+    dplyr::left_join(
+        data_group,
+        by = "samples"
+)
+p_tsne <- ggplot(all_tsne_result, aes(x = tSNE1, y = tSNE2,
+                                      color = group)) +  # 这里加上 shape = Cell
+    geom_point(size = 3) +
+    labs(x = "tSNE1", y = "tSNE2", color = 'Treatment', 
+         title = 'HaCaT: t-SNE results in flux sampling') +
+    scale_color_manual(
+        values = c("WT" = "#f06152", "UVB" = "#ffe788", "UA" = "#abddff"),
+        breaks = c("WT", "UVB", "UA")
+    ) +
+    theme_minimal(base_size = 14)+
+    theme(plot.title = element_text(hjust = 0.5))
+p_tsne
+ggsave('Hacat_FLUX.PDF',p_tsne,height = 6,width = 6,dpi = 1200)
+
+
+library(readxl)
+library(effsize)
+library(ggplot2)
+model = read_xlsx("Human-GEM.xlsx")  # Tabular representation of the Human1 metabolic model (reactions, metabolites, genes)
+model_note = model[,c(2,3,4,6,12)]
+UVB =read.delim("E:/gems_project/riptide3.9/riptide_output_mean/Hacat/sample_2.tsv_20251009_170252/flux_samples.tsv")
+UA =read.delim("E:/gems_project/riptide3.9/riptide_output_mean/Hacat/sample_3.tsv_20251009_180959/flux_samples.tsv")
+
+UA =UA [,-1]
+UVB =UVB [,-1]
+> setdiff(colnames(UA), colnames(UVB))  
+  [1] "MAR04595" "MAR04352" "MAR04404" "MAR04477" "MAR04501" "MAR04565" "MAR04010" "MAR04080" "MAR04135"
+ [10] "MAR04603" "MAR04016" "MAR04030" "MAR04642" "MAR06612" "MAR03967" "MAR04680" "MAR07867" "MAR07883"
+ [19] "MAR07886" "MAR07890" "MAR08456" "MAR03827" "MAR03899" "MAR03213" "MAR03215" "MAR03868" "MAR04329"
+ [28] "MAR04300" "MAR04628" "MAR03958" "MAR03960" "MAR03980" "MAR02654" "MAR02672" "MAR01557" "MAR04333"
+ [37] "MAR04655" "MAR08132" "MAR03955" "MAR03951" "MAR03959" "MAR04882" "MAR04919" "MAR04985" "MAR05315"
+ [46] "MAR05319" "MAR05322" "MAR05330" "MAR05333" "MAR05580" "MAR05583" "MAR05590" "MAR05595" "MAR05621"
+ [55] "MAR05640" "MAR05651" "MAR05665" "MAR05710" "MAR05754" "MAR05785" "MAR05990" "MAR06018" "MAR06020"
+ [64] "MAR06217" "MAR06530" "MAR06733" "MAR08408" "MAR09609" "MAR03789" "MAR03825" "MAR04852" "MAR05043"
+ [73] "MAR05304" "MAR07824" "MAR08891" "MAR07772" "MAR07776" "MAR09133" "MAR09146" "MAR09235" "MAR09353"
+ [82] "MAR09354" "MAR09360" "MAR09383" "MAR09421" "MAR09437" "MAR00147" "MAR00150" "MAR01047" "MAR01780"
+ [91] "MAR02146" "MAR08274" "MAR08976" "MAR09112" "MAR09820" "MAR09828" "MAR09838" "MAR09839" "MAR09842"
+[100] "MAR09858" "MAR09868" "MAR09924" "MAR10243" "MAR10256" "MAR10363" "MAR10364" "MAR10366" "MAR10367"
+[109] "MAR10387" "MAR11277" "MAR11400" "MAR11941" "MAR11942" "MAR20132" "MAR20139" "MAR20149" "MAR20153"
+[118] "MAR20155" "MAR20160" "MAR20162" "MAR20165"
+> setdiff(colnames(UVB), colnames(UA))  
+ [1] "MAR04193" "MAR04052" "MAR04171" "MAR04452" "MAR04600" "MAR05353" "MAR04670" "MAR04637" "MAR06627"
+[10] "MAR07869" "MAR08450" "MAR08467" "MAR08469" "MAR03802" "MAR03804" "MAR03806" "MAR03807" "MAR04190"
+[19] "MAR03839" "MAR03841" "MAR03996" "MAR04328" "MAR03988" "MAR04524" "MAR05407" "MAR00479" "MAR01876"
+[28] "MAR04308" "MAR04332" "MAR00155" "MAR04896" "MAR05032" "MAR05068" "MAR05071" "MAR05080" "MAR05088"
+[37] "MAR05094" "MAR05311" "MAR05326" "MAR06048" "MAR06049" "MAR06371" "MAR06373" "MAR06374" "MAR07666"
+[46] "MAR07680" "MAR08077" "MAR08687" "MAR08879" "MAR03946" "MAR04874" "MAR06289" "MAR06290" "MAR06317"
+[55] "MAR06389" "MAR07854" "MAR03987" "MAR04887" "MAR04962" "MAR07778" "MAR07780" "MAR09048" "MAR09061"
+[64] "MAR09087" "MAR09254" "MAR09363" "MAR00124" "MAR02220" "MAR04142" "MAR06863" "MAR06897" "MAR07105"
+[73] "MAR07151" "MAR07153" "MAR07189" "MAR09831" "MAR09854" "MAR09913" "MAR09922" "MAR09989" "MAR10195"
+[82] "MAR10263" "MAR10265" "MAR10389" "MAR10391" "MAR10511" "MAR10539" "MAR10753" "MAR10781" "MAR10995"
+[91] "MAR11023" "MAR11272" "MAR11787" "MAR11953" "MAR20141" "MAR20163"
+
+common_rxns <- intersect(colnames(UA), colnames(UVB))
+UA2  <- UA[, common_rxns]
+UVB2 <- UVB[, common_rxns]
+res_list <- lapply(common_rxns, function(rxn){
+  x <- UA2[[rxn]]
+  y <- UVB2[[rxn]]
+  # Wilcoxon test
+  wtest <- wilcox.test(x, y)
+  # Cliff's Delta
+  cd <- cliff.delta(x, y)
+  data.frame(
+    ID   = rxn,
+    median_UA  = median(x),
+    median_UVB = median(y),
+    delta_flux = median(x) - median(y),
+    pvalue     = wtest$p.value,
+    cliffs_delta = cd$estimate
+  )
+})
+
+res <- do.call(rbind, res_list)
+res$FDR <- p.adjust(res$pvalue, method = "BH")
+res$effect_size <- cut(abs(res$cliffs_delta),
+                       breaks = c(0, 0.147, 0.33, 0.474, 1),
+                       labels = c("negligible","small","medium","large"),
+                       include.lowest = TRUE)
+res$prob_UA_gt_UVB <- (res$cliffs_delta + 1)/2
+sig_rxns <- subset(res,
+                   FDR < 0.05 &
+                   abs(cliffs_delta) > 0.147)
+sig_rxns = merge(model_note,sig_rxns)
+
+medium_rxns = subset(res,
+                         abs(cliffs_delta) > 0.33)
+medium_rxns = merge(model_note,medium_rxns)
+write.csv(medium_rxns ,'medium_rxns.csv',row.names = FALSE)
+write.csv(sig_rxns ,'sig_rxns.csv',row.names = FALSE)
+write.csv(res ,'Cliff_delta_result.csv',row.names = FALSE)
+p_volcano = ggplot(res, aes(x = cliffs_delta, y = -log10(FDR))) +
+    geom_point(aes(color = effect_size), alpha = 0.7) +
+    geom_vline(xintercept = c(-0.147, 0.147), linetype="dashed") +
+    labs(x="Cliff's Delta (Effect Size)",y="-log10(FDR)",title = 'HaCaT: UA vs UVB')
+    theme_bw(base_size = 14) +
+    theme(plot.title = element_text(hjust = 0.5))
+ggsave('p_volcano.pdf',p_volcano ,height = 4,width = 4,dpi = 1200)    
+
+
+UA_uni =t(UA[,colnames(UA) %in% setdiff(colnames(UA), colnames(UVB)) ])
+UVB_uni =t(UVB[,colnames(UVB)%in% setdiff(colnames(UVB), colnames(UA))])
+UA_uni=as.data.frame(UA_uni)
+UVB_uni=as.data.frame(UVB_uni)
+UA_uni$median  <- apply(UA_uni, 1, median)
+UVB_uni$median <- apply(UVB_uni, 1, median)
+UA_uni  <- UA_uni[, c("median", setdiff(colnames(UA_uni), "median"))]
+UVB_uni <- UVB_uni[, c("median", setdiff(colnames(UVB_uni), "median"))]
+UA_uni$ID  <- rownames(UA_uni)
+UVB_uni$ID <- rownames(UVB_uni)
+UA_uni  <- merge(model_note, UA_uni,  by = "ID")
+UVB_uni <- merge(model_note, UVB_uni, by = "ID")
+write.csv(UA_uni,'UA_uni.csv',row.names = FALSE)
+write.csv(UVB_uni,'UVB_uni.csv',row.names = FALSE)
+
+
+
+###Random forest model
+library(stringr)
+library(ggplot2)
+library(scales)
+library(ggh4x)
+library(caret)
+library(ggtext)
+library(glue)
+library(caret)
+library(randomForest)
+
+UA2$Type  <- "UA"
+UVB2$Type <- "UVB"
+
+merged_df <- rbind(UA2, UVB2)
+merged_df$Type <- as.factor(merged_df$Type)
+constant_cols <- sapply(merged_df[, -ncol(merged_df)], function(x) length(unique(x)) == 1)
+merged_df <- merged_df[, c(!constant_cols, TRUE)]
+merged_df$Type <- factor(merged_df$Type, levels = c("UVB", "UA"))
+trControl <- trainControl(
+method = "repeatedcv",  number = 10, repeats = 3, search = "random",   
+classProbs = TRUE,    summaryFunction = twoClassSummary)
+rf_random <- train(
+    x = merged_df[, -ncol(merged_df)],  
+    y = merged_df$Type,                       
+    method = "rf",
+    metric = "ROC",          
+    trControl = trControl
+)
+if(!dir.exists("rda")) dir.create("rda")
+saveRDS(rf_random, "rda/rf_random.rda")
+print(rf_random)
+
+> print(rf_random)
+Random Forest 
+
+2000 samples
+ 353 predictor
+   2 classes: 'UVB', 'UA' 
+
+###The result
+No pre-processing
+Resampling: Cross-Validated (10 fold, repeated 3 times) 
+Summary of sample sizes: 1800, 1800, 1800, 1800, 1800, 1800, ... 
+Resampling results across tuning parameters:
+
+  mtry  ROC  Sens  Spec
+  196   1    1     1   
+  288   1    1     1   
+  311   1    1     1   
+
+ROC was used to select the optimal model using the largest value.
+The final value used for the model was mtry = 196.
+
+importance <- varImp(rf_random, scale = FALSE)$importance
+importance$ID<- rownames(importance)
+importance = merge(importance,model_note)
+importance <- importance[order(-importance$Overall), ]
+importance_0.5 = importance[ importance$Overall>=0.5,]
+
+write.csv(importance ,'RF_HaCaT.csv',row.names = FALSE)
+write.csv(importance_0.5 ,'RF_HaCaT_0.5.csv',row.names = FALSE)
+
+
+all_res =merge(res,importance)
+all_res_rf = all_res[all_res $Overall>0.5 & all_res$effect_size!='negligible',]
+
+###The figure of  important reactions' subsystems
+library(dplyr)
+library(scales)
+
+sub_count <- all_res_rf %>%
+  count(SUBSYSTEM)
+rare_sub <- sub_count %>%
+  filter(n < 3) %>%
+  pull(SUBSYSTEM)
+all_res_rf <- all_res_rf %>%
+  mutate(SUBSYSTEM2 = ifelse(SUBSYSTEM %in% rare_sub,
+                             "Other",
+                             SUBSYSTEM))
+
+
+all_sub <- sort(unique(all_res_rf$SUBSYSTEM2))
+main_sub <- setdiff(all_sub, "Other")
+
+sub_colors <- hue_pal(h = c(0, 360) + 15,
+                      c = 100,
+                      l = 65)(length(main_sub))
+
+sub_color_df_new <- data.frame(
+  SUBSYSTEM2 = main_sub,
+  color = sub_colors
+)
+
+if("Other" %in% all_sub){
+  sub_color_df_new <- rbind(
+    sub_color_df_new,
+    data.frame(SUBSYSTEM2 = "Other",
+               color = "#B0B0B0")
+  )
+}
+
+sub_cols <- setNames(sub_color_df_new$color,
+                     sub_color_df_new$SUBSYSTEM2)
+
+all_res_rf$logImp <- log10(all_res_rf$Overall)
+rf_cutoff <- quantile(all_res_rf$logImp, 0.9)
+
+
+p_volcano_mix <- ggplot(all_res_rf,
+                        aes(x = cliffs_delta,
+                            y = logImp,
+                            fill = SUBSYSTEM)) +
+  geom_point(shape = 21,
+             size = 4,
+             alpha = 0.85,
+             stroke = 0.2,
+             color = "black") +
+  geom_vline(xintercept = c(-0.147, 0.147),
+             linetype = "dashed",
+             linewidth = 0.5) +
+  geom_hline(yintercept = rf_cutoff,
+             linetype = "dashed",
+             linewidth = 0.5) +
+  scale_fill_manual(values = sub_cols) +
+  labs(x = "Cliff's Delta (Effect Size)",
+       y = expression(log[10]("RF Importance")),
+       fill = "Subsystem",
+       title = "HaCaT: UA vs UVB") +
+  theme_bw(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey90"),
+    legend.position = "right"
+  )
+
+p_volcano_mix
+
+
+p_dot <- ggplot(all_res_rf,
+                aes(x = SUBSYSTEM2,
+                    y = logImp,
+                    fill = cliffs_delta)) +
+    
+    geom_point(shape = 21,
+               size = 4,
+               alpha = 0.85,
+               stroke = 0.2,
+               color = "black",
+               position = position_jitter(width = 0.25)) +
+    
+    geom_hline(yintercept = rf_cutoff,
+               linetype = "dashed",
+               linewidth = 0.5) +
+    
+    scale_fill_gradient2(low = "#3B4CC0",
+                         mid = "white",
+                         high = "#B40426",
+                         midpoint = 0,
+                         limits = c(-1, 1),
+                         name = "Cliff's δ") +
+    
+    labs(x = "Subsystem",
+         y = expression(log[10]("RF Importance")),
+         title = "HaCaT: UA vs UVB") +
+    
+    theme_bw(base_size = 14) +
+    theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 60, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "grey90"),
+        legend.position = "right"
+    )
+
+p_dot
+
+write.csv(all_res_rf,'all_res_rf.csv',row.names = FALSE)
+ggsave('p_dot.pdf',p_dot,height = 6,width = 12,dpi = 1200)
+
+
+#####The figure of  unique reactions' subsystems
+library(cluster)
+rownames(UA_uni)=UA_uni[,1]
+UA_data = UA_uni[,-c(1:6)]
+ua_mat <- t(UA_data) 
+d_ua <- dist(ua_mat)
+pam_res_ua <- pam(d_ua, k = 1)# PAM 找 medoid
+medoid_index_ua<- pam_res_ua$id.med
+UA_medoid <- ua_mat[medoid_index_ua, ] 
+UA_uni_medoid = as.data.frame(UA_medoid)
+colnames(UA_uni_medoid)='flux'
+UA_uni_medoid$Group = 'UA'
+UA_uni_medoid$ID = rownames(UA_uni_medoid)
+UA_uni_medoid = inner_join(UA_uni_medoid,UA_uni[,c(1:6)],by='ID')
+
+rownames(UVB_uni)=UVB_uni[,1]
+UVB_data = UVB_uni[,-c(1:6)]
+UVB_mat <- t(UVB_data) 
+d_UVB <- dist(UVB_mat)
+pam_res_UVB <- pam(d_UVB, k = 1)# PAM 找 medoid
+medoid_index_UVB<- pam_res_UVB$id.med
+UVB_medoid <- UVB_mat[medoid_index_UVB, ]  # 代表解
+UVB_uni_medoid = as.data.frame(UVB_medoid)
+colnames(UVB_uni_medoid)='flux'
+UVB_uni_medoid$Group = 'UVB'
+UVB_uni_medoid$ID = rownames(UVB_uni_medoid)
+UVB_uni_medoid = inner_join(UVB_uni_medoid,UVB_uni[,c(1:6)],by='ID')
+
+uni_medoid = rbind(UA_uni_medoid,UVB_uni_medoid)
+sub_count_uni <- uni_medoid  %>%
+    count(SUBSYSTEM)
+rare_uni <- sub_count_uni %>%
+    filter(n < 3) %>%
+    pull(SUBSYSTEM)
+uni_medoid = uni_medoid %>%
+mutate(SUBSYSTEM2 = ifelse(SUBSYSTEM %in% rare_uni,
+                           "Other",
+                           SUBSYSTEM))
+
+
+uni_medoid <- uni_medoid %>%
+    mutate(
+        flux_dir = ifelse(flux > 0, "Positive", "Negative"),   
+        flux_size = log2(abs(flux) + 1)               
+    )
+
+
+p_dot_uni <- ggplot(uni_medoid,
+                    aes(x = SUBSYSTEM2,
+                        y = Group,
+                        fill = flux_dir,
+                        size = flux_size)) +  
+    
+geom_point(shape = 21,
+             alpha = 0.85,
+             stroke = 0.2,
+             color = "black",
+             position = position_jitterdodge(jitter.width = 0.8, dodge.width = 0.6)) +  
+    
+    scale_fill_manual(values = c("Positive" = "#B40426",  # 
+                                 "Negative" = "#3B4CC0")) + # 
+    scale_size_continuous(range = c(4,8)) +  # 
+    
+    labs(x = "Subsystem",
+         y = NULL,
+         fill = "Flux direction",
+         size = expression(log[2]*"(abs(flux)+1)"),
+         title = "Unique reactions in HaCaT") +
+    
+    theme_bw(base_size = 12) +
+    theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 60, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "grey90"),
+        legend.position = "right",
+        plot.margin = margin(0.1, 0.8, 0.1, 2.5, unit="cm")
+    )
+
+p_dot_uni
+ggsave('p_dot_uni.pdf', p_dot_uni,height = 5,width = 12,dpi = 1200)
+
+### Visualization of important reactions in specific subsystem
+RA <- RA %>%
+    mutate(
+        label_type = ifelse(is.na(NAME), "Equation", "Name"),
+        Y = ifelse(is.na(NAME), EQUATION, NAME)
+    )
+
+RA <- RA %>%
+    mutate(Y = str_wrap(Y, width = 50))
+
+
+
+MAR06647=data.frame(WT=WT[,colnames(UVB)=='MAR06647'],
+                     UVB=UVB[,colnames(UVB)=='MAR06647'],
+                     UA=UA[,colnames(UA)=='MAR06647'])
+MAR06647_long <- MAR06647 %>%
+    pivot_longer(cols = everything(), names_to = "Condition", values_to = "Flux")
+MAR06647_long$Condition <- factor(
+    MAR06647_long$Condition,
+    levels = c("WT", "UVB", "UA")
+)
+MAR06647_long = merge(RA[RA$ID =='MAR06647',c(1,18)],MAR06647_long)
+P_MAR06647 = ggplot(MAR06647_long, aes(x = Flux, fill = Condition)) +
+    geom_density(alpha = 0.4) +  # alpha 控制透明度，重叠可见
+    scale_fill_manual(values = c("WT"="steelblue", "UVB"="firebrick", "UA"="forestgreen")) +
+    facet_wrap(~Condition, scales = "free_y") +
+    theme_bw() +
+    labs(x = "Flux value", y = "Density", fill = "Condition") +
+    ggtitle("Name: retinal:NAD+ oxidoreductase")+
+    theme(plot.title = element_text(hjust = 0.5))
+P_MAR06647
+
+MAR06702=data.frame(WT=WT[,colnames(UVB)=='MAR06702'],
+                    UVB=UVB[,colnames(UVB)=='MAR06702'],
+                    UA=UA[,colnames(UA)=='MAR06702'])
+MAR06702_long <- MAR06702 %>%
+    pivot_longer(cols = everything(), names_to = "Condition", values_to = "Flux")
+MAR06702_long$Condition <- factor(
+    MAR06702_long$Condition,
+    levels = c("WT", "UVB", "UA")
+)
+MAR06702_long = merge(RA[RA$ID =='MAR06702',c(1,18)],MAR06702_long)
+P_MAR06702 = ggplot(MAR06702_long, aes(x = Flux, fill = Condition)) +
+    geom_density(alpha = 0.4) +  # alpha 控制透明度，重叠可见
+    scale_fill_manual(values = c("WT"="steelblue", "UVB"="firebrick", "UA"="forestgreen")) +
+    facet_wrap(~Condition, scales = "free_y") +
+    theme_bw() +
+    labs(x = "Flux value", y = "Density", fill = "Condition") +
+    ggtitle("Equation:
+            4-hydroxy-all-trans-retinoate[c] + H+[c] + NADPH[c] + O2[c] 
+            => 4-oxo-all-trans-retinoate[c] + 2 H2O[c] + NADP+[c]")+
+    theme(plot.title = element_text(hjust = 0.5))
+P_MAR06702
+
+
+MAR06677=data.frame(WT=WT[,colnames(UVB)=='MAR06677'],
+                    UVB=UVB[,colnames(UVB)=='MAR06677'],
+                    UA=UA[,colnames(UA)=='MAR06677'])
+MAR06677_long <- MAR06677 %>%
+    pivot_longer(cols = everything(), names_to = "Condition", values_to = "Flux")
+MAR06677_long$Condition <- factor(
+    MAR06677_long$Condition,
+    levels = c("WT", "UVB", "UA")
+)
+MAR06677_long = merge(RA[RA$ID =='MAR06677',c(1,18)],MAR06677_long)
+P_MAR06677 = ggplot(MAR06677_long, aes(x = Flux, fill = Condition)) +
+    geom_density(alpha = 0.4) +  # alpha 控制透明度，重叠可见
+    scale_fill_manual(values = c("WT"="steelblue", "UVB"="firebrick", "UA"="forestgreen")) +
+    facet_wrap(~Condition, scales = "free_y") +
+    theme_bw() +
+    labs(x = "Flux value", y = "Density", fill = "Condition") +
+    ggtitle("Equation:       	
+13-cis-retinal[c] + H+[c] + NADPH[c] + O2[c] =>
+ 4-OH-13-cis-retinal[c] + H2O[c] + NADP+[c]")+
+    theme(plot.title = element_text(hjust = 0.5))
+P_MAR06677
+
+
+MAR06700=data.frame(WT=WT[,colnames(UVB)=='MAR06700'],
+                    UVB=UVB[,colnames(UVB)=='MAR06700'],
+                    UA=UA[,colnames(UA)=='MAR06700'])
+MAR06700_long <- MAR06700 %>%
+    pivot_longer(cols = everything(), names_to = "Condition", values_to = "Flux")
+MAR06700_long$Condition <- factor(
+    MAR06700_long$Condition,
+    levels = c("WT", "UVB", "UA")
+)
+P_MAR06700 = ggplot(MAR06700_long, aes(x = Flux, fill = Condition)) +
+    geom_density(alpha = 0.4) +  # alpha 控制透明度，重叠可见
+    scale_fill_manual(values = c("WT"="steelblue", "UVB"="firebrick", "UA"="forestgreen")) +
+    facet_wrap(~Condition, scales = "free_y") +
+    theme_bw() +
+    labs(x = "Flux value", y = "Density", fill = "Condition") +
+    ggtitle("Equation: 
+H+[c] + NADPH[c] + O2[c] + retinoate[c] => 
+4-hydroxy-all-trans-retinoate[c] + H2O[c] + NADP+[c]")+
+    theme(plot.title = element_text(hjust = 0.5))
+P_MAR06700
+
+p_retinol =
+  ( P_MAR06647+ P_MAR06632 + P_MAR06677 +P_MAR06700  +
+     plot_layout(guides = 'collect')) &
+  theme(legend.position = 'right')
+
+p_retinol  = p_retinol  +
+  plot_annotation(
+    title = "Flux sampling distribution related to 'retinol metabolism' in HaCaT",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5)))
+p_retinol
+
+ggsave('retinol_Hacat.PDF',p_retinol,height = 6,width = 15,dpi = 1200)
+
