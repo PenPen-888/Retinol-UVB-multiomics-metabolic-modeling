@@ -1,0 +1,120 @@
+ library(tidyverse)
+#Figure 5C
+###########HFF
+rna =read.csv("KEGG_ALL_all.csv")
+pro =read.csv("KEGG_ALL_all.csv")
+meta= read.csv("HFF_AB_kegg_meta.csv")
+
+rna$Type = 'RNA'
+meta$Type='Metabolite'
+pro$Type = 'Protein'
+colnames(meta)[14]='symbol_list'
+
+rna = subset(rna,select = c(category,Description,pvalue,symbol_list,Count,Type))
+pro = subset(pro,select = c(category,Description,pvalue,symbol_list,Count,Type))
+meta = subset(meta,select = c(Description,pvalue,symbol_list,Count,Type))
+category_map <- bind_rows(
+    rna %>% select(Description, category) %>% distinct(),
+    pro %>% select(Description, category) %>% distinct()
+) %>%
+    distinct(Description, .keep_all = TRUE) 
+
+
+r_m = intersect(rna$Description,meta$Description)
+p_m = intersect(pro$Description,meta$Description)
+all_path = union(r_m,p_m)
+all_omics = bind_rows(rna[rna$Description %in% all_path,-1],pro[pro$Description %in% all_path,-1],meta[meta$Description %in% all_path,])
+all_omics = left_join(all_omics,category_map)
+all_omics = distinct(all_omics)
+write.csv(all_omics,'path_all.csv',row.names = FALSE)
+
+####Filter pathways significantly enriched in two omics types at least
+sig_descriptions <- all_omics %>%
+  filter(pvalue < 0.05) %>%
+  pull(Description) %>%
+  unique()
+all_omics_sig <- all_omics %>%
+  filter(Description %in% sig_descriptions)
+
+
+#######Draw picture
+library(ggplot2)
+HFF_AB =read.csv("PATH_fil.csv")
+HFF_AB <- HFF_AB %>%
+  mutate(
+    Type = str_trim(as.character(Type)),
+    Description = str_trim(as.character(Description)),
+    pvalue = as.numeric(pvalue),
+    Count = as.numeric(Count)
+  ) %>%
+  filter(!is.na(pvalue), !is.na(Count), !is.na(Type))
+
+pvalue_min_AB <- min(HFF_AB$pvalue, na.rm = TRUE) 
+pvalue_max_AB <- max(HFF_AB$pvalue, na.rm = TRUE)
+pvalue_upper_AB <- (pvalue_min_AB + pvalue_max_AB) * 3 / 4
+pvalue_lower_AB <- (pvalue_min_AB + pvalue_max_AB) / 4
+pvalue_middle_AB <- (pvalue_min_AB + pvalue_max_AB) / 2
+color_breaks_AB <- c(pvalue_min_AB, pvalue_lower_AB, pvalue_middle_AB, pvalue_upper_AB, pvalue_max_AB)
+color_values_AB <- scales::rescale(color_breaks_AB)
+color_labels_AB <- sprintf("%.2e", color_breaks_AB)
+
+HFF_AB <- HFF_AB %>%
+    arrange(Description, .by_group = TRUE) %>%  
+    mutate(Description = factor(Description, levels = sort(unique(Description)))) %>%
+    ungroup()
+
+count_breaks <- c(
+  min(HFF_AB$Count, na.rm = TRUE),
+  round(mean(HFF_AB$Count, na.rm = TRUE)),
+  max(HFF_AB$Count, na.rm = TRUE)
+)
+
+HFF_AB$Description = str_wrap(HFF_AB$Description,width =40)
+HFF_AB = HFF_AB[order(HFF_AB$Description),]
+
+P_HFF_AB <- ggplot(HFF_AB, aes(y = Type, x = Description)) +
+    geom_point(aes(size = Count, color = pvalue, shape = Type), alpha = 0.8) +
+    scale_color_gradientn(
+        colours = c("#DC0000FF", "#f2b56f", "#fae69e", "#9CD4C7", "#357EBD99"),
+        values = color_values_AB,
+        breaks = color_breaks_AB,
+        labels = color_labels_AB,
+        limits = c(pvalue_min_AB, pvalue_max_AB),
+        guide = guide_colorbar(
+            reverse = TRUE,
+            title = "P value",
+            order = 1,
+            barheight = unit(4, "cm"),
+            barwidth = unit(0.8, "cm")
+        )
+    ) +
+    scale_shape_manual(
+        name = "Type",
+        values = c(
+            "RNA" = 16,
+            "Protein" = 17,
+            "Metabolite" = 18
+        ),
+        guide = guide_legend(override.aes = list(size = 5))
+    ) +
+    scale_size_continuous(
+        range = c(6, 10),
+        breaks = count_breaks,  
+        labels = as.character(count_breaks),
+        guide = guide_legend(
+            title = "Count",
+            order = 2,
+            override.aes = list(color = "black")
+        )
+    ) +
+    scale_y_discrete(limits = c("RNA","Protein",'Metabolite')) +
+    labs(title = "Multi-omics: KEGG pathways (HFF:UA vs UVB)",x = NULL,y = NULL) +
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x = element_text(
+            angle = 60,  hjust = 1,vjust = 1),
+        plot.title = element_text( hjust = 0.5,size = 14),
+        panel.border = element_rect(colour = "grey80", fill = NA ),
+        legend.position = c(1.05, 0.2) ,plot.margin = margin(t = 10, r = 100, b = 10, l = 10, unit = "pt")
+    )
+ggsave('HFF_AB_multi.pdf',P_HFF_AB,height = 6,width = 15,dpi = 1200)

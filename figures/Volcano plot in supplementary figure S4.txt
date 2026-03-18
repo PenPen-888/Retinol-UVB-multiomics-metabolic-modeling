@@ -1,0 +1,71 @@
+###### Volcano plots 
+####Supplementary Figure S4 B,D
+###Example ：HFF (UA vs UVB)
+library(VennDiagram)
+library(grid)
+library(ggplot2)
+library(tidyverse)
+library(ggrepel)
+ library(stringr)
+AB =read.csv("HFF_AB.csv")
+BT =read.csv("HFF_BT.csv")
+
+BT_sig = BT[BT$p<=0.05 & BT$VIP>=1,]
+AB_sig = AB[AB$p<=0.05 & AB$VIP>=1,]
+all = merge(BT_sig,AB_sig,by='Metabolite',suffixes = c('_BT','_AB'))
+con_meta = all[(all$logFC_BT)*(all$logFC_AB)<0,]
+write.csv(con_meta,'con_meta.csv',row.names = FALSE)
+
+con_fil = read.csv('con_fil.csv')
+VIP_breaks <- c(
+  min(AB_sig$VIP, na.rm = TRUE),
+  round(mean(AB_sig$VIP, na.rm = TRUE)),
+  max(AB_sig$VIP, na.rm = TRUE)
+)
+VIP_labels <- sprintf("%.2f", VIP_breaks)
+fc_min <- min(AB_sig$logFC, na.rm = TRUE)
+fc_max <- max(AB_sig$logFC, na.rm = TRUE)
+abs_max <- max(abs(fc_min), abs(fc_max))
+
+AB_sig = AB_sig[abs(AB_sig$logFC)<=5,]
+p_volcano <- ggplot(AB_sig, aes(x = logFC, y = -log10(p), color = logFC, size = VIP)) +
+    geom_point(alpha = 0.9) +
+    scale_color_gradientn(
+        colors = c("#2166AC", "#4DBBD5B2", "white", "#FDDBC7", "#B2182B"), 
+        values = scales::rescale(c(-5, -2.5, 0, 2.5, 5)), 
+        limits = c(-5,5),
+        name = "Log2 FC",
+        na.value = "grey90"
+    ) +
+    scale_size_continuous(
+        range = c(2, 5),
+        breaks = VIP_breaks,  
+        labels = VIP_labels,
+        guide = guide_legend(
+            title = "VIP",
+            order = 2,
+            override.aes = list(color = "black")
+        )
+    ) +
+    geom_vline(xintercept = c(-0.585, 0.585), linetype = 2, color = "black", size = 0.3) +
+    annotate("text", x = 0.8, y = 1.65, label = "|Log2 FC| = 0.585",
+             hjust = 0, vjust = -0.5, size = 4, color = "black") +
+    geom_text_repel(data = subset(AB_sig, Metabolite %in% con_fil$Metabolite),
+                    aes(label = str_wrap(con_fil$Metabolite,width = 20)),
+                    size = 4,
+                    alpha = 1,            
+                    box.padding = 0.5,
+                    point.padding = 0.3,
+                    color='black',
+                    segment.color = "grey40") +
+    coord_cartesian(ylim = c(1.5, 1.75)) + 
+    theme_minimal(base_size = 14) +
+    theme(panel.border = element_rect(color = "black", size = 0.5, fill = NA),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          plot.title = element_text(hjust = 0.5)) +
+    labs(x = "Log2 Fold Change", y = "-Log10 (p value)", color = "Log2 fc") +
+    ggtitle("HFF : UA vs UVB (Metabolome)")
+
+print(p_volcano)
+ggsave('HFF_AB_sig_meta.pdf',height = 6,width = 8,dpi=1200)

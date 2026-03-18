@@ -1,0 +1,194 @@
+### Nine-quadrant scatter plots in the single omics data
+###Figure 2A, 2C, 3A, 3C, 4A, 4C
+library(tidyverse)
+library(patchwork)  
+library(RColorBrewer)
+library(circlize)
+library(dplyr)
+library(ggrepel)
+HFF_AB =read.csv("DE_HFF_AB.csv")
+HFF_BT=read.csv("DE_HFF_BT.csv")
+HFF_AB$gene_name = make.unique(HFF_AB$gene_name )
+HFF_BT$gene_name = make.unique(HFF_BT$gene_name)
+HFF= full_join(HFF_BT[,-1],HFF_AB[,-1],by='gene_name',suffix = c('_BT','_AB'))
+HFF= HFF[HFF$pvalue_BT<=0.05|HFF$pvalue_AB<=0.05,]
+HFF=HFF[!is.na(HFF$gene_name),]
+HFF= full_join(HFF_UVBvsWT[HFF_UVBvsWT$gene_name %in% HFF$gene_name,-1],HFF_UAvsUVB[HFF_UAvsUVB$gene_name %in% HFF$gene_name,-1],by='gene_name',suffix = c('_BT','_AB'))
+HFF[is.na(HFF)]=0
+HFF$part <- case_when(
+    HFF$logFC_BT >= 1 & HFF$logFC_AB>= 0.585 |
+        HFF$logFC_BT < -1 & HFF$logFC_AB< -0.585 ~ "part37", 
+abs(HFF$logFC_BT) < 1 & abs(HFF$logFC_AB) < 0.585 ~ "part5",    
+    abs(HFF$logFC_BT) >= 1 & abs(HFF$logFC_AB) < 0.585 ~ "part46",  
+    abs(HFF$logFC_BT) < 1 & abs(HFF$logFC_AB) >= 0.585 ~ "part28",      (HFF$logFC_BT < -1 & HFF$logFC_AB>= 0.585) | 
+        (HFF$logFC_BT >= 1 & HFF$logFC_AB< -0.585) |
+        abs(HFF$logFC_BT) >=1 & HFF$logFC_AB== 0|
+        abs(HFF$logFC_AB) >=0.585 & HFF$logFC_BT== 0~ "part19")
+HFF$joint_logfc <- abs(HFF$logFC_BT - HFF$logFC_AB)
+HFF$joint_logfc <- abs(HFF$logFC_BT ^2 + HFF$logFC_AB^2)
+HFF$joint_logfc <- abs(HFF$logFC_BT - HFF$logFC_AB)
+top_joint_HFF <- HFF %>%
+    filter(part=='part19')%>%
+    arrange(desc(joint_logfc))%>%
+head(10)
+HFF_key_symbol = c('DHRS3','ABCA1','TMTC2','LARGE1','SLC16A7','GGT5','PLA2G4A')
+p_HFF <- ggplot(HFF, aes(x = logFC_BT, y = logFC_AB, color = part)) + 
+    geom_point(alpha = 0.8, size = 1) +  # 绘制散点图
+    scale_color_manual(values = c('part37' = '#91D1C2D2',  # 不太关注
+                                  'part19' = '#FF4757',   # 重点关注
+                                  'part28' = '#ffe788',  # 次关注
+                                  'part46' = '#2f80ed',  #次关注
+                                  'part5' = '#d2dae2'),# 灰色表示均未显著变化
+                       labels = c(
+                           'part19' = "Reversed (both significant)",
+                           'part28' = "Reversed (one significant)",
+                           'part37' = "Same direction (both significant)",
+                           'part46' = "Same direction (one significant)",
+                           'part5'  = "No significant change"
+                       ),
+                       name = "Expression change pattern"
+    )+
+    scale_x_continuous(limits = c(-3.5, 3.5))+
+    # ---------------- 辅助线 ----------------
+geom_vline(xintercept = c(-0.585, 0.585), linetype = "dashed", color = "gray40") +
+    geom_hline(yintercept = c(-0.585, 0.585), linetype = "dashed", color = "gray40") +
+    annotate(
+        "text",
+        x = 0.585,
+        y = max(HFF$logFC_AB, na.rm = TRUE),
+        label = "| Log2 FC | = 0.585",
+        vjust = 3,
+        hjust = -0.05,
+        size = 4
+    ) +
+    geom_text_repel(
+        data = subset(HFF, gene_name %in% HFF_key_symbol),
+        aes(label = gene_name),
+        size = 4,
+        alpha = 1, 
+        min.segment.length = 0,
+        box.padding = 0.5,
+        point.padding = 0.3,
+        segment.color = "black",
+        color = "black"
+    )+
+    labs(x = "Log2 FC (UVB vs WT)", y =  "Log2 FC (UA vs UVB)",  title = "Key genes in HFF") + 
+    guides(color = guide_legend(override.aes =list(size =3)))+
+    theme_bw(base_size = 14) + 
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position = "right" ,
+          panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank()) 
+p_HFF
+ggsave('HFF_rna.pdf',height = 5.2,width =7,dpi=1200)
+
+######## Figure 5A
+###Example : HFF(UA vs UVB)
+library(tidyverse)
+library(ggplot2)
+name =read.csv("name.csv")  ### The table of proteins' ID and their gene symbol
+HFF_AB_rna =read.csv("DE_HFF_AB.csv")
+HFF_AB_pro =read.csv("HFF_UAvsUVB_all.csv")
+HFF_AB_pro = subset(HFF_AB_pro,select = c(logFC,P.Value,Protein))
+colnames(HFF_AB_pro)[2]='pvalue'
+HFF_AB_pro = left_join(HFF_AB_pro,name,by='Protein')
+HFF_AB_rna = subset(HFF_AB_rna,select = c(logFC,pvalue,symbol))
+
+HFF_AB = full_join(HFF_AB_rna,HFF_AB_pro,by='symbol',suffix = c('_rna','_pro'))
+HFF_AB[is.na(HFF_AB)]=0
+HFF_AB = HFF_AB[(HFF_AB$pvalue_rna > 0 & HFF_AB$pvalue_rna <= 0.05) | 
+                (HFF_AB$pvalue_pro > 0 & HFF_AB$pvalue_pro <= 0.05), ]
+HFF_AB = HFF_AB[abs(HFF_AB$logFC_pro)<=5,]
+HFF_AB$part <- case_when(
+    HFF_AB$logFC_rna >= 0.585 & HFF_AB$logFC_pro>= 0.26 |
+        HFF_AB$logFC_rna < -0.585 & HFF_AB$logFC_pro< -0.26 ~ "part37",  
+    abs(HFF_AB$logFC_rna) < 0.585 & abs(HFF_AB$logFC_pro) < 0.26 ~ "part5",    
+    abs(HFF_AB$logFC_rna) >= 0.585 & abs(HFF_AB$logFC_pro) < 0.26 ~ "part46",  
+    abs(HFF_AB$logFC_rna) < 0.585 & abs(HFF_AB$logFC_pro) >= 0.26 ~ "part28",  
+    (HFF_AB$logFC_rna < -0.585 & HFF_AB$logFC_pro>= 0.26) | 
+        (HFF_AB$logFC_rna >= 0.585 & HFF_AB$logFC_pro< -0.26) |
+        abs(HFF_AB$logFC_rna) >=0.585 & HFF_AB$logFC_pro== 0|
+        abs(HFF_AB$logFC_pro) >=0.26 & HFF_AB$logFC_rna== 0~ "part19")
+HFF_AB$joint_logfc <- abs(HFF_AB$logFC_rna - HFF_AB$logFC_pro)
+HFF_AB$joint_logfc <- abs(HFF_AB$logFC_rna ^2 + HFF_AB$logFC_pro^2)
+HFF_AB$joint_logfc <- abs(HFF_AB$logFC_rna - HFF_AB$logFC_pro)
+top_joint_HFF_AB <- HFF_AB %>%
+    filter(part=='part37')%>%
+    arrange(desc(joint_logfc))%>%
+    head(10)
+
+cor_test_HFF <- cor.test(
+    HFF_AB$logFC_rna,
+   HFF_AB$logFC_pro,
+    method = "spearman"
+)
+
+rho_HFF <- cor_test_HFF$estimate
+
+P_HFF_AB <- ggplot(HFF_AB, aes(x = logFC_rna, y = logFC_pro, color = part)) + 
+    geom_point(alpha = 0.8, size = 2) +
+    
+    geom_smooth(
+        method = "lm",
+        se = FALSE,
+        color = "black",
+        linetype = "dashed",
+        linewidth = 0.5
+    ) +
+    
+    scale_color_manual(
+        values = c(
+            'part37' = '#FF4757',
+            'part19' = 'purple',
+            'part28' = '#2ed573',
+            'part46' = '#2f80ed',
+            'part5'  = '#d2dae2'
+        ),
+        labels = c(
+            'part37' = "Same direction",
+            'part19' = "Opposite direction",
+            'part28' = "Protein only",
+            'part46' = "mRNA only",
+            'part5'  = "No significant change"
+        ),
+        name = "Change Pattern"
+    )+
+    
+    geom_vline(xintercept = c(-0.585,0.585), lty = 4, col = "black", lwd = 0.2) +  
+    geom_hline(yintercept = c(-0.26, 0.26), lty = 4, col = "black", lwd = 0.2) +
+    annotate(
+        "text",
+        x = Inf,
+        y = Inf,
+        label = paste0("Spearman  = ", round(rho_HFF, 2)),
+        hjust = 1.1,
+        vjust = 1.5,
+        size = 5
+    ) +
+    
+    labs(
+        x = "log2 FC (mRNA)", 
+        y = NULL,
+        title = "HFF: UA vs UVB"
+    ) +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "right"
+    )
+
+p_HFF_AB <- P_HFF_AB + geom_text_repel(
+    data = top_joint_HFF_AB,
+    aes(x = logFC_rna, y = logFC_pro, label = symbol),
+    inherit.aes = FALSE,
+    size = 4,
+    alpha = 1,
+    box.padding = 0.5,
+    point.padding = 0.5,
+    min.segment.length = 0,
+    segment.color = "black",
+    color = 'black'
+)
+p_HFF_AB
+ggsave('p_HFF_AB_rp.pdf', p_HFF_AB, height = 5, width = 8, dpi = 1200)

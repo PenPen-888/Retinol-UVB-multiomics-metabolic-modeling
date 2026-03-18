@@ -1,0 +1,408 @@
+library(tidyverse)
+library(ggsankeyfier) 
+library(patchwork)  
+library(RColorBrewer)
+library(circlize)
+library(dplyr)
+library(ggsci)
+
+###Figure 4B, D
+HFF_AB= read.csv("HFF_path_fil.csv")
+Hacat_AB =read.csv("Hacat_path_fil.csv")
+HFF_AB$Name <- gsub("5-Aminoimidazole-4-carboxamide-1-beta-D-ribofuranosyl 5'-monophosphate",
+                    "5-Aminoimidazole-4-carboxamide-1-beta\n-D-ribofuranosyl 5'-monophosphate",
+                    HFF_AB$Name)
+Hacat_AB$Name <- gsub("5-Aminoimidazole-4-carboxamide-1-beta-D-ribofuranosyl 5'-monophosphate",
+                    "5-Aminoimidazole-4-carboxamide-1-beta\n-D-ribofuranosyl 5'-monophosphate",
+                    Hacat_AB$Name)
+HFF_AB <- HFF_AB %>%
+    mutate(trend_color = case_when(
+        logFC > 0 ~ "#DC0000",  
+        logFC < 0 ~ "#357EBD",  
+        TRUE ~ "gray80"
+    ))
+HFF_AB_sankey <- HFF_AB %>%
+    pivot_stages_longer(
+    stages_from = c("Description", "Name"),  
+        values_from = "VIP"
+    )
+
+Hacat_AB <- Hacat_AB %>%
+    mutate(trend_color = case_when(
+        logFC > 0 ~ "#DC0000",  
+        logFC < 0 ~ "#357EBD",  
+        TRUE ~ "gray80"
+    ))
+Hacat_AB_sankey <- Hacat_AB %>%
+    pivot_stages_longer(
+    stages_from = c("Description", "Name"),  
+        values_from = "VIP"
+    )
+####Categories’ colors
+cate <- unique(c(
+    Hacat_AB$Category,
+    HFF_AB$Category
+))
+cate_colors <- c(
+    "#E64B35FF",
+    "#D5E9C6",
+    "#3C5488FF"
+)
+names(cate_colors) <- cate
+
+HFF_AB_meta_color <- HFF_AB %>%
+    select(Name, trend_color) %>%
+    distinct() %>%
+    { setNames(.$trend_color, .$Name) }
+HFF_AB_path_color <- HFF_AB %>%
+    select(Description, Category) %>%  
+    distinct() %>%
+    mutate(col = cate_colors[Category]) %>%
+    { setNames(.$col, .$Description) }  
+col_HFF_AB <- c(HFF_AB_path_color, HFF_AB_meta_color)
+HFF_AB_sankey = HFF_AB_sankey[order(HFF_AB_sankey$node),]
+p_HFF_AB <- ggplot(
+    data = HFF_AB_sankey,
+    aes(x = stage, y = VIP, group = node, edge_id = edge_id, connector = connector)
+) +
+    # edge 
+    geom_sankeyedge(position = position_sankey(order = "ascending", v_space = "auto", width = 0.01)) + 
+    # node
+    geom_sankeynode(
+        aes(fill = node, color = node),
+        position = position_sankey(split_nodes = TRUE, order = "ascending", width = 0.1, v_space = "auto")
+    ) +
+    geom_text(
+        data = HFF_AB_sankey %>% filter(connector == "from"),
+        aes(label = node),
+        stat = "sankeynode",
+        hjust = 1,
+        position = position_sankey(v_space = "auto",  nudge_x = -0.05)
+    ) +
+    geom_text(
+        data =HFF_AB_sankey %>% filter(connector == "to"),
+        aes(label = node),
+        stat = "sankeynode",
+        hjust = 0,
+        position = position_sankey(v_space = "auto", nudge_x = 0.05)
+    ) +
+    scale_fill_manual(values = col_HFF_AB, guide = "none") +
+    scale_color_manual(values = col_HFF_AB, guide = "none") +
+    coord_cartesian( clip = "off") +  
+    theme_minimal(base_size = 14) +
+    theme(
+        legend.position = "none",
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5,vjust=-9),
+        plot.margin = margin(0.1, 3, 0.1, 2, unit="cm")
+    ) +
+    labs(
+        x = NULL, y = NULL,
+        title = 'HFF'
+    )
+p_HFF_AB
+
+Hacat_AB_meta_color <- Hacat_AB %>%
+    select(Name, trend_color) %>%
+    distinct() %>%
+    { setNames(.$trend_color, .$Name) }
+Hacat_AB_path_color <- Hacat_AB %>%
+    select(Description, Category) %>%  
+    distinct() %>%
+    mutate(col = cate_colors[Category]) %>%
+    { setNames(.$col, .$Description) }  
+col_Hacat_AB <- c(Hacat_AB_path_color, Hacat_AB_meta_color)
+
+p_Hacat_AB <- ggplot(
+    data = Hacat_AB_sankey,
+    aes(x = stage, y = VIP, group = node, edge_id = edge_id, connector = connector)
+) +
+    # edge 
+    geom_sankeyedge(position = position_sankey(order = "ascending", v_space = "auto", width = 0.01)) + 
+    # node
+    geom_sankeynode(
+        aes(fill = node, color = node),
+        position = position_sankey(split_nodes = TRUE, order = "ascending", width = 0.1, v_space = "auto")
+    ) +
+    geom_text(
+        data = Hacat_AB_sankey %>% filter(connector == "from"),
+        aes(label = node),
+        stat = "sankeynode",
+        hjust = 1,
+        position = position_sankey(v_space = "auto",  nudge_x = -0.05)
+    ) +
+    geom_text(
+        data =Hacat_AB_sankey %>% filter(connector == "to"),
+        aes(label = node),
+        stat = "sankeynode",
+        hjust = 0,
+        position = position_sankey(v_space = "auto", nudge_x = 0.05)
+    ) +
+    scale_fill_manual(values = col_Hacat_AB, guide = "none") +
+    scale_color_manual(values = col_Hacat_AB, guide = "none") +
+    coord_cartesian( clip = "off") +  
+    theme_minimal(base_size = 14) +
+    theme(
+    legend.position = "none",
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.background = element_blank(),
+    plot.title = element_text(hjust = 0.5,vjust=-10),
+    plot.margin = margin(0.1, 3, 0.1, 2, unit="cm")
+) +
+    labs(
+        x = NULL, y = NULL,
+        title = 'HaCaT'
+    )
+p_sankey = p_HFF_AB/p_Hacat_AB+ 
+    plot_layout(heights = c(1, 2.5))
+ggsave('AB_sankey.pdf',p_sankey,height = 12,width = 16,dpi = 1200)
+
+cate_df <- data.frame(
+    x = c(0.5,0.65,1),
+    y = 1,
+    category = names(cate_colors)
+)
+
+p_cate_legend <- ggplot(cate_df, aes(x = x, y = y)) +
+    geom_text(
+        data = data.frame(x = 0.4, y = 1.0001, label = "Category"),
+        aes(label = label),
+        size = 5,
+        hjust = 0,
+        vjust = 0.5
+    ) +
+    geom_point(
+        aes(fill = category),
+        shape = 21,
+        size = 5,
+        color = "black",
+        stroke = 0.1
+    ) +
+    geom_text(
+        aes(label = category),
+        nudge_x = 0.02,
+        hjust = 0,
+        vjust = 0.5,
+        size = 4
+    ) +
+    scale_fill_manual(values = cate_colors) +
+    scale_x_continuous(
+        expand = c(0, 0),
+        limits = c(0.35, max(cate_df$x) + 0.2)
+    ) +
+    scale_y_continuous(
+        expand = c(0, 0),
+        limits = c(0.99, 1.01)
+    ) +
+    theme_void() +
+    theme(
+        legend.position = "none",
+        plot.margin = unit(c(0.1, 0.1, 0.1,0.1), "mm"),
+        plot.background = element_rect(
+            fill = "white",
+            color = "grey50",
+            linewidth = 0.5
+        )
+    )
+p_cate_legend
+
+
+
+trend_legend_df <- data.frame(
+    x = c(1, 1.02),
+    y = 1,
+    Trend = c("Up", "Down"),
+    color = c("#DC0000", "#357EBD")
+)
+
+p_trend_legend <- ggplot(trend_legend_df, aes(x = x, y = y)) +
+    geom_point(
+        aes(fill = Trend),
+        shape = 21,
+        size = 5,
+        color = "black",
+        stroke = 0.5
+    ) +
+    geom_text(
+        aes(label = Trend),
+        nudge_x = 0.002,
+        hjust = 0,
+        vjust = 0.5,
+        size = 4
+    ) +
+    geom_text(
+        data = data.frame(x = 0.995, y = 0.9997),
+        aes(label = "Trend"),
+        size = 5,
+        hjust = 0.5,
+        vjust = 0
+    ) +
+    scale_fill_manual(
+        values = setNames(trend_legend_df$color, trend_legend_df$Trend)
+    ) +
+    scale_x_continuous(
+        expand = c(0, 0),
+        limits = c(0.985, 1.03)
+    ) +
+    scale_y_continuous(
+        expand = c(0, 0),
+        limits = c(0.99, 1.01)
+    ) +
+    theme_void() +
+    theme(
+        legend.position = "none",
+        plot.margin = unit(c(0.1, 0.1, 0.1,0.1), "mm"),
+        plot.background = element_rect(
+            fill = "white",
+            color = "grey50",
+            linewidth = 0.5
+        )
+    )
+
+p_trend_legend
+p_legend = p_cate_legend +p_trend_legend+ plot_layout(widths = c(2, 1))
+p_legend
+p_legend <- p_cate_legend + 
+            plot_spacer() +  
+            p_trend_legend + 
+            plot_layout(widths = c(2, 0.2, 1))  
+p_legend
+p_final = p_sankey/p_legend+plot_layout(heights = c(10,1))
+p_final
+ggsave('legend.pdf',p_legend,height = 2,width = 16,dpi = 1200)
+
+
+####Vertical legend
+trend_legend_df <- data.frame(
+    x = 1,
+    y = c(1, 0.98),
+    Trend = c("Up", "Down"),
+    color = c("#DC0000", "#357EBD")
+)
+p_trend_legend_shu <- ggplot(trend_legend_df, aes(x = x, y = y)) +
+    geom_point(
+        aes(fill = Trend),
+        shape = 21,
+        size = 5,
+        color = "black",
+        stroke = 0.5
+    ) +
+    geom_text(
+        aes(label = Trend),
+        nudge_x = 0.002,
+        hjust = 0,
+        vjust = 0.5,
+        size = 4
+    ) +
+    geom_text(
+        data = data.frame(x = 1, y = 1.01),
+        aes(label = "Trend"),
+        size = 5,
+        hjust = 0.5,
+        vjust = 0
+    ) +
+    scale_fill_manual(
+        values = setNames(trend_legend_df$color, trend_legend_df$Trend)
+    ) +
+    scale_x_continuous(
+        expand = c(0, 0),
+        limits = c(0.99, 1.01)
+    ) +
+    scale_y_continuous(
+        expand = c(0, 0),
+        limits = c(0.97, 1.02)
+    ) +
+    theme_void() +
+    theme(
+        legend.position = "none"
+    )
+p_trend_legend_shu
+cate_df <- data.frame(
+    y = c(1.05,1.1,1),
+    x = 1,
+    category = names(cate_colors)
+)
+
+p_cate_legend_shu <- ggplot(cate_df, aes(x = x, y = y)) +
+    geom_text(
+        data = data.frame(x = 1, y = 1.15, label = "Category"),
+        aes(label = label),
+        size = 5,
+        hjust = 0,
+        vjust = 0.5
+    ) +
+    geom_point(
+        aes(fill = category),
+        shape = 21,
+        size = 5,
+        color = "black",
+        stroke = 0.1
+    ) +
+    geom_text(
+        aes(label = category),
+        nudge_x = 0.02,
+        hjust = 0,
+        vjust = 0.5,
+        size = 4
+    ) +
+    scale_fill_manual(values = cate_colors) +
+    scale_x_continuous(
+        expand = c(0, 0),
+        limits = c(0.9, max(cate_df$x) + 0.2)
+    ) +
+    scale_y_continuous(
+        expand = c(0, 0),
+        limits = c(0.9, 1.3)
+    ) +
+    theme_void() +
+    theme(
+        legend.position = "none"
+    )
+p_cate_legend_shu
+cate_df <- data.frame(
+    y = c(1.05,1.1,1),
+    x = 1,
+    category = names(cate_colors)
+)
+
+p_cate_legend_shu <- ggplot(cate_df, aes(x = x, y = y)) +
+    geom_text(
+        data = data.frame(x = 1, y = 1.15, label = "Category"),
+        aes(label = label),
+        size = 5,
+        hjust = 0,
+        vjust = 0.5
+    ) +
+    geom_point(
+        aes(fill = category),
+        shape = 21,
+        size = 5,
+        color = "black",
+        stroke = 0.1
+    ) +
+    geom_text(
+        aes(label = category),
+        nudge_x = 0.02,
+        hjust = 0,
+        vjust = 0.5,
+        size = 4
+    ) +
+    scale_fill_manual(values = cate_colors) +
+    scale_x_continuous(
+        expand = c(0, 0),
+        limits = c(0.9, max(cate_df$x) + 0.2)
+    ) +
+    scale_y_continuous(
+        expand = c(0, 0),
+        limits = c(0.9, 1.3)
+    ) +
+    theme_void() +
+    theme(
+        legend.position = "none"
+    )
+p_legend_shu = p_cate_legend_shu/p_trend_legend_shu  +
+plot_layout(heights = c(3, 2))
+ggsave('legend_shu.pdf',p_legend_shu,height = 8,width = 6,dpi = 1200)
