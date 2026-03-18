@@ -1,0 +1,307 @@
+library(mixOmics)
+library(matrixStats)
+library(tidyverse)
+
+#####The original calculate process of Figure 5E 
+###一.Data processing
+#Transcriptome
+rna = read.csv("DE_HFF_AB.csv")
+tpm = read.csv("tpm.csv")
+count =read.csv("count_filter.csv")
+count_fake = count[count$gene_biotype=='processed_pseudogene',]
+rna_sig =rna[rna$pvalue<=0.05,]
+rna_sig =rna[rna$pvalue<=0.05,]
+AB <- tpm %>%
+    filter(gene_id %in% rna_sig$gene_id)   %>%
+    filter(!(gene_id) %in% count_fake$gene_id)%>%
+    dplyr::select(starts_with("HFF_UVB"), starts_with("HFF_UA"),'gene_id')
+rna = left_join(rna_sig[,c(2,9)],AB,by='gene_id')
+rownames(rna)=make.unique(rna[,2])
+rna= rna[,-c(1,2)]
+BT_rna=read.csv("DE_HFF_BT.csv")
+BT_rna = BT_rna[BT_rna$gene_id %in% rna_sig$gene_id,]
+co_rna =inner_join(rna_sig,BT_rna,by='gene_id',suffix = c('_AB','_BT'))
+co_rna = co_rna[co_rna$logFC_AB*co_rna$logFC_BT<0,]
+rna = rna[rownames(rna) %in% co_rna$symbol_AB,]
+
+
+#Proteome
+pro_ori =read.csv("HFF_UAvsUVB_sig.csv")
+pro = left_join(pro_ori[,c(2:5,7:9)],name,by='Protein')
+rownames(pro)=pro[,8]
+pro = pro[,-c(1,8)]
+BT_pro =read.csv("HFF_UVBvsWT_all.csv")
+co_pro = inner_join(pro_ori,BT_pro,by='Protein',suffix = c('_AB','_BT'))
+co_pro  = co_pro [co_pro $logFC_AB*co_pro $logFC_BT<0,]
+pro = pro[rownames(pro)%in% co_pro$symbol,]
+co_pro = merge(name,co_pro)
+
+
+######Metabolome
+###Input: filtered metabolites
+hmdb =read.csv("hmdb_final.csv")
+neg_all =read.csv("neg_all.csv")
+pos_all =read.csv("pos_all.csv")
+meta_all = rbind(neg_all,pos_all)
+meta =read.csv("HFF_AB_sig.csv")
+meta_hmdb = meta_sig[meta_sig$Name %in% hmdb$Name,]
+meta_yu = meta_sig[!(meta_sig$Name) %in% meta_hmdb $Name,]
+meta = meta_all %>%
+    filter(Name %in% meta_sig$Name)%>%
+    filter(Name %in% hmdb$Name)
+rownames(meta)=meta[,1]
+meta <- meta[, c(grep("^HFF_UVB", colnames(meta)), grep("^HFF_UA", colnames(meta)))]
+meta = meta[,-c(4,8)]
+
+
+#####二.Intergrated multi omics data into a matrix
+meta_t = t(log2(meta+0.01))
+rna_t = t(log2(rna+0.01))
+pro_t = t(log2(pro+0.01))
+
+data <- list(
+Rna = rna_t,
+Protein =pro_t,
+Metabolite = meta_t)
+#统一行名
+common_samples <- Reduce(intersect, lapply(data, rownames))
+unified_order <- rownames(data$Rna)
+data <- lapply(data, function(x) x[unified_order, , drop=FALSE])
+lapply(data, rownames)
+
+samples <- colnames(rna)
+group <- factor(sub("HFF_(WT|UVB|UA).*", "\\1", samples))
+
+
+#######Determine parameters
+tune.res_r <- tune(method = "splsda", data$Rna, group, 
+                   ncomp = 2, 
+                   dist = "max.dist",
+                   folds = 3, nrepeat = 5,
+                   test.keepX = c(10,15,20,35,50))
+plot(tune.res_r)
+tune.res_p <- tune(method = "splsda", data$Protein, group, 
+                   ncomp = 2, 
+                   dist = "max.dist",
+                   folds = 3, nrepeat = 3,
+                   test.keepX = c(10,15,20,35))
+plot(tune.res_p)
+tune.res_m <- tune(method = "splsda", data$Metabolite, group, 
+                   ncomp = 2, 
+                   dist = "max.dist",
+                   folds = 3, nrepeat = 3,
+                   test.keepX = c(5,8,10))
+plot(tune.res_m)
+
+
+####三.Construct the model
+design <- matrix(1, ncol = 3, nrow = 3,
+                 dimnames = list(c("Rna","Protein","Metabolite"),
+                                 c("Rna","Protein","Metabolite")))
+diag(design) <- 0
+diablo <- block.splsda(
+  X = data,
+  Y = group,
+  ncomp = 2,
+  keepX = list(
+    Rna = 20,
+    Protein = 15,
+    Metabolite = 10
+  ),
+  design = design
+)       
+selectVar(diablo, comp = 1)$Rna$name
+selectVar(diablo, comp = 1)$Protein$name
+selectVar(diablo, comp = 1)$Metabolite$name
+
+######Drawing codes providing in the software "mixomics"
+circosPlot(diablo,
+           cutoff = 0.95,
+           color.blocks = c('darkorchid', 'brown1', 'lightgreen'),
+           line = TRUE,
+           size.labels = 3,        
+           size.variables = 2,     
+           size.legend = 3)    
+net.res = network(diablo)
+
+
+######Construct the network and output
+library(reshape2)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+library(dplyr)
+
+# 1. Filter important features
+sel_Rna <- selectVar(diablo, comp = 1)$Rna$name
+sel_pro <- selectVar(diablo, comp = 1)$Protein$name
+sel_meta <- selectVar(diablo, comp = 1)$Metabolite$name
+
+
+# 2.Intergrated data matrix
+Rna_data <- data$Rna[, sel_Rna]
+pro_data <- data$Protein[, sel_pro]
+meta_data <- data$Metabolite[, sel_meta]
+combined_data <- cbind(Rna_data, pro_data, meta_data)
+
+# 3. Spearman correlation
+cor_mat <- cor(combined_data, method = "spearman")
+cor_long <- melt(cor_mat)
+colnames(cor_long) <- c("Source", "Target", "Correlation")
+cor_long <- cor_long[cor_long$Source != cor_long$Target, ]
+cor_long <- cor_long[abs(cor_long$Correlation) > 0.8, ]
+cor_long <- cor_long %>%
+  rowwise() %>%
+  mutate(pair = paste0(sort(c(Source, Target)), collapse = "_")) %>%
+  ungroup() %>%
+  distinct(pair, .keep_all = TRUE) %>%
+  select(-pair)
+
+# 4.Network (igraph）
+g <- graph_from_data_frame(d = cor_long, directed = FALSE)
+V(g)$group <- ifelse(V(g)$name %in% sel_Rna, "Rna",
+                     ifelse(V(g)$name %in% sel_pro, "Protein", "Metabolite"))
+V(g)$color <- ifelse(V(g)$group == "Rna", "darkorchid",
+                     ifelse(V(g)$group == "Protein", "brown1", "lightgreen"))
+
+tg <- as_tbl_graph(g)
+ggraph(tg, layout = 'fr') +
+  geom_edge_link(aes(edge_alpha = 0.5), color = "grey50") +
+  geom_node_point(aes(color = group), size = 4) +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+  theme_void()
+
+#Node
+loadings_Rna <- diablo$loadings$Rna
+loadings_Protein <- diablo$loadings$Protein
+loadings_Metabolite <- diablo$loadings$Metabolite
+
+nodes <- bind_rows(
+  data.frame(ID = rownames(loadings_Rna), 
+             group = "Rna", 
+             Comp1 = loadings_Rna[,1], 
+             Contribution = abs(loadings_Rna[,1])),
+  data.frame(ID = rownames(loadings_Protein), 
+             group = "Protein", 
+             Comp1 = loadings_Protein[,1], 
+             Contribution = abs(loadings_Protein[,1])),
+  data.frame(ID = rownames(loadings_Metabolite), 
+             group = "Metabolite", 
+             Comp1 = loadings_Metabolite[,1], 
+             Contribution = abs(loadings_Metabolite[,1]))
+)
+nodes <- nodes %>%
+  filter(Contribution != 0) %>%
+  distinct(ID, .keep_all = TRUE)
+
+# Edge
+edges <- cor_long
+colnames(edges) <- c("Source", "Target", "Weight")-
+g_final <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE)
+
+# Output
+write.csv(nodes, "nodes_for_cytoscape.csv", row.names = FALSE, quote = FALSE)
+write.csv(edges, "edges_for_cytoscape.csv", row.names = FALSE, quote = FALSE)
+write_graph(g_final, file = "network.gml", format = "gml")
+########  Edit the network in Cytoscape
+
+##Circos figures
+library(tidyverse)
+library(reshape2)
+library(circlize)
+nodes_fil =read.csv("node_fil.csv")
+Rna_data <- Rna_data[,colnames(Rna_data) %in% nodes_fil$ID]
+meta_data =meta_data[,colnames(meta_data)%in% nodes_fil$ID]
+pro_data =pro_data[,colnames(pro_data)%in% nodes_fil$ID]
+combined_data <- cbind(Rna_data, pro_data, meta_data)
+cor_mat <- cor(combined_data, method = "spearman")
+cor_long <- melt(cor_mat)
+colnames(cor_long) <- c("Source", "Target", "Correlation")
+cor_long <- cor_long[cor_long$Source != cor_long$Target, ]
+cor_long <- cor_long %>%
+  rowwise() %>%
+  mutate(pair = paste0(sort(c(Source, Target)), collapse = "_")) %>%
+  ungroup() %>%
+  distinct(pair, .keep_all = TRUE) %>%
+  select(-pair)
+
+nodes_fil = nodes[nodes$ID %in% nodes_fil$ID,]
+id2group <- setNames(nodes_fil$group, nodes_fil$ID)
+cor_cir <- cor_long %>%
+    mutate(
+        Source_group = id2group[Source],
+        Target_group = id2group[Target]
+    )
+cor_cir <- cor_cir %>%
+    filter(
+        (Source_group == "Rna" & Target_group %in% c("Protein", "Metabolite")) |
+            (Source_group == "Protein" & Target_group %in% c("Rna", "Metabolite")) |
+            (Source_group == "Metabolite" & Target_group %in% c("Rna", "Protein"))
+    )
+cor_cir  = cor_cir [abs(cor_cir $Correlation)>=0.9,]
+sector_col <- c(
+    Rna = "#D73027",      
+    Protein = "#90D4A4",   
+    Metabolite = "#762A83" 
+)
+
+cor_cir <- cor_cir %>%
+    mutate(
+        Cor_cat = case_when(
+            Correlation < -0.9            ~ "<-0.9",
+            Correlation > 0.9             ~ ">0.9",
+            TRUE                          ~ NA_character_  
+        )
+    ) %>%
+    filter(!is.na(Cor_cat)) 
+
+node_col <- setNames(sector_col[nodes$group], nodes$ID)
+
+
+edge_col <- c(
+    "<-0.9" = "#2166AC",
+    ">0.9" = "#B2182B"        
+)
+
+cor_cir$col <- edge_col[cor_cir$Cor_cat]
+omics_order <- c(sel_Rna, sel_pro, sel_meta)
+
+options(warn = 2)
+circos.clear()
+pdf("chord_omics_network.pdf", width = 8, height = 8)
+
+circos.par(
+    start.degree = 320,
+    gap.after = 2,
+    canvas.xlim = c(-1.2, 1.2),
+    canvas.ylim = c(-1.2, 1.2),
+    track.margin = c(0.002, 0.002),
+    cell.padding = c(0, 0, 0, 0)
+)
+
+chordDiagram(
+    x = cor_cir[, c("Source", "Target", "Correlation")],
+    grid.col = node_col,
+    order = omics_order,
+    col = cor_cir$col,
+    transparency = 0.4,
+    annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = 0.1),
+    link.border = "black",
+    link.lwd = 0.3
+)
+
+circos.track(track.index = 1, panel.fun = function(x, y) {
+    circos.text(
+        CELL_META$xcenter, 
+        CELL_META$ylim[1], 
+        CELL_META$sector.index,
+        facing = "clockwise",
+        niceFacing = TRUE,
+        adj = c(0, 0.5),     
+        cex = 0.7              
+    )
+}, bg.border = NA)
+
+dev.off()
+# circos.clear()

@@ -1,0 +1,85 @@
+library(tidyverse)
+library(ropls)
+library(pROC)
+HFF= read.csv("HFF.csv") ###Filtered metabolome datasets
+rownames(HFF)=HFF[,1]
+HFF=HFF[,-1]
+WT = HFF %>%
+select(matches('WT'))
+UVB= HFF %>%
+select(matches('UVB'))
+UA= HFF %>%
+select(matches('UA'))
+UVB=UVB[,-5]
+WT=WT[,-5]
+UA=UA[,-5]
+
+###########P and FDR
+wilcox_test_func <- function(row_data, groups) {
+  test_result <- wilcox.test(row_data ~ groups, exact = FALSE) 
+  return(test_result$p.value)
+}
+
+data_BT<- cbind(UVB, WT)
+groups_BT<- factor(c(rep("UVB", ncol(UVB)), rep("WT", ncol(WT))))
+p_values_BT<- apply(data_BT, 1, wilcox_test_func, groups = groups_BT)
+fdr_values_BT<- p.adjust(p_values_BT, method = "BH")
+results_BT <- data.frame(
+  Metabolite = names(p_values_BT),
+  p= p_values_BT,
+  FDR_BH = fdr_values_BT
+)
+results_BT = merge(results_BT,HFF[,c(13,14)],by='row.names')
+results_BT$logFC = log2((results_BT$HFF_UVB+0.01)/(results_BT$HFF_WT+0.01))
+
+#####opls-da
+BT_opls <- cbind(UVB, WT) 
+BT_groups <- factor(c(
+  rep("HFF_UVB", ncol(UVB)), 
+  rep("HFF_WT", ncol(WT)) #
+))
+BT_opls_t <- t(BT_opls)
+BT_plsda_model <- opls(
+BT_opls_t,
+BT_groups,
+predI = 2,
+orthoI = 0,
+scaleC = "pareto"
+)
+ggsave('HFF_BT.png',height = 8,width = 8)
+vip_BT <- getVipVn(BT_plsda_model) 
+vip_BT <- data.frame( Metabolite = names(vip_BT), VIP = as.numeric(vip_BT) ) 
+results_BT= merge(results_BT[,-1],vip_BT)
+
+data_AB<- cbind(UA, UVB)
+groups_AB<- factor(c(rep("UA", ncol(UA)), rep("UVB", ncol(UVB))))
+p_values_AB<- apply(data_AB, 1, wilcox_test_func, groups = groups_AB)
+fdr_values_AB<- p.adjust(p_values_AB, method = "BH")
+results_AB <- data.frame(
+  Metabolite = names(p_values_AB),
+  p= p_values_AB,
+  FDR_BH = fdr_values_AB
+)
+results_AB = merge(results_AB,HFF[,c(14,15)],by='row.names')
+results_AB$logFC = log2((results_AB$HFF_UA+0.01)/(results_AB$HFF_UVB+0.01))
+
+#####opls-da
+AB_opls <- cbind(UA, UVB) 
+AB_groups <- factor(c(
+  rep("HFF_UA", ncol(UA)), 
+  rep("HFF_UVB", ncol(UVB)) #
+))
+AB_opls_t <- t(AB_opls)
+AB_plsda_model <- opls(
+AB_opls_t,
+AB_groups,
+predI = 2,
+orthoI = 0,
+scaleC = "pareto"
+)
+ggsave('HFF_AB.png',height = 8,width = 8)
+vip_AB <- getVipVn(AB_plsda_model) 
+vip_AB <- data.frame( Metabolite = names(vip_AB), VIP = as.numeric(vip_AB) ) 
+results_AB= merge(results_AB[,-1],vip_AB)
+write.csv(results_BT,'HFF_BT.csv')
+write.csv(results_AB,'HFF_AB.csv')

@@ -1,0 +1,401 @@
+Differential analysis
+source("Data filter and  enrich.R") ###Provided in “Code”
+
+###HFF: UVB vs WT
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+BT <- count %>%
+  select(starts_with("HFF_WT"), starts_with("HFF_UVB"))
+rownames(tpm)=tpm[,19]
+BT_tpm <- tpm %>%
+select(starts_with("HFF_WT"), starts_with("HFF_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(BT_tpm, 1, function(x) {
+  wt  <- x[grepl("^HFF_WT", names(x))]
+  uvb <- x[grepl("^HFF_UVB", names(x))]
+  
+  # At least one sample > cutoff
+  wt_expr  <- sum(wt  > cutoff, na.rm = TRUE)
+  uvb_expr <- sum(uvb > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(wt_expr > 0, uvb_expr > 0))
+  
+  # 1. At least two samples have values
+  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(wt_expr, uvb_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  # 3.Delete
+  return(FALSE)
+})
+
+BT_tpm_filtered <- BT_tpm[keep_gene, ]
+BT =  BT[rownames(BT) %in% rownames(BT_tpm_filtered ),]
+group <- factor(c(rep("HFF_WT", 3), rep("HFF_UVB", 3)), levels = c("HFF_WT", "HFF_UVB"))
+y <- DGEList(counts = as.matrix(BT))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+# Coef = 2res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+HFF_BT = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(HFF_BT)[8]='symbol'
+write.csv(HFF_BT, "DE_HFF_BT.csv")
+
+HFF_BT_1.5= fc_function(HFF_BT,1.5,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+HFF_BT_result= fc_function(HFF_BT,2,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+
+
+###HFF: UA vs UVB
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+cutoff <- 0.5
+AB <- count %>%
+  select(starts_with("HFF_UVB"), starts_with("HFF_UA"))
+group <- factor(c(rep("HFF_UVB", 3), rep("HFF_UA", 3)), levels = c("HFF_UVB", "HFF_UA"))
+rownames(tpm)=tpm[,19]
+AB_tpm <- tpm %>%
+select(starts_with("HFF_UA"), starts_with("HFF_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(AB_tpm, 1, function(x) {
+  UVB  <- x[grepl("^HFF_UVB", names(x))]
+  UA <- x[grepl("^HFF_UA", names(x))] 
+# At least one sample > cutoff  
+UVB_expr  <- sum(UVB  > cutoff, na.rm = TRUE)
+  UA_expr <- sum(UA > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(UVB_expr > 0, UA_expr > 0))
+  
+  # 1. At least two samples have values  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(UVB_expr, UA_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  #  3.Delete
+  return(FALSE)
+})
+
+AB_tpm_filtered <- AB_tpm[keep_gene, ]
+AB =  AB[rownames(AB) %in% rownames(AB_tpm_filtered ),]
+group <- factor(c(rep("HFF_UVB", 3), rep("HFF_UA", 3)), levels = c("HFF_UVB", "HFF_UA"))
+y <- DGEList(counts = as.matrix(AB))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+# Coef = 2
+res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+HFF_AB = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(HFF_AB)[8]='symbol'
+
+write.csv(HFF_AB, "DE_HFF_AB.csv")
+HFF_AB_result= fc_function(HFF_AB,1.5,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+
+###Hacat: UVB vs WT
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+BT <- count %>%
+  select(starts_with("Hacat_WT"), starts_with("Hacat_UVB"))
+rownames(tpm)=tpm[,19]
+BT_tpm <- tpm %>%
+select(starts_with("Hacat_WT"), starts_with("Hacat_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(BT_tpm, 1, function(x) {
+  wt  <- x[grepl("^Hacat_WT", names(x))]
+  uvb <- x[grepl("^Hacat_UVB", names(x))]
+  
+# At least one sample > cutoff  wt_expr  <- sum(wt  > cutoff, na.rm = TRUE)
+  uvb_expr <- sum(uvb > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(wt_expr > 0, uvb_expr > 0))
+  
+  # 1. At least two samples have values  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(wt_expr, uvb_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  #  3.Delete
+  return(FALSE)
+})
+
+BT_tpm_filtered <- BT_tpm[keep_gene, ]
+BT =  BT[rownames(BT) %in% rownames(BT_tpm_filtered),]
+group <- factor(c(rep("Hacat_WT", 3), rep("Hacat_UVB", 3)), levels = c("Hacat_WT", "Hacat_UVB"))
+y <- DGEList(counts = as.matrix(BT))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+# Coef = 2
+res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+Hacat_BT = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(Hacat_BT)[8]='symbol'
+
+write.csv(Hacat_BT, "DE_Hacat_BT.csv")
+Hacat_BT_result= fc_function(Hacat_BT,2,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+
+
+
+###Hacat: UA vs UVB
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+cutoff <- 0.5
+AB <- count %>%
+  select(starts_with("Hacat_UVB"), starts_with("Hacat_UA"))
+group <- factor(c(rep("Hacat_UVB", 3), rep("Hacat_UA", 3)), levels = c("Hacat_UVB", "Hacat_UA"))
+rownames(tpm)=tpm[,19]
+AB_tpm <- tpm %>%
+select(starts_with("Hacat_UA"), starts_with("Hacat_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(AB_tpm, 1, function(x) {
+  UVB  <- x[grepl("^Hacat_UVB", names(x))]
+  UA <- x[grepl("^Hacat_UA", names(x))]
+  
+# At least one sample > cutoff  UVB_expr  <- sum(UVB  > cutoff, na.rm = TRUE)
+  UA_expr <- sum(UA > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(UVB_expr > 0, UA_expr > 0))
+  
+  # 1. At least two samples have values  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(UVB_expr, UA_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  #  3.Delete
+  return(FALSE)
+})
+
+AB_tpm_filtered <- AB_tpm[keep_gene, ]
+AB =  AB[rownames(AB) %in% rownames(AB_tpm_filtered),]
+group <- factor(c(rep("Hacat_UVB", 3), rep("Hacat_UA", 3)), levels = c("Hacat_UVB", "Hacat_UA"))
+y <- DGEList(counts = as.matrix(AB))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+#  Coef = 2
+
+res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+Hacat_AB = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(Hacat_AB)[8]='symbol'
+
+write.csv(Hacat_AB, "DE_Hacat_AB.csv")
+Hacat_AB_result= fc_function(Hacat_AB,1.5,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+
+###Hacat_BT
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+BT <- count %>%
+  select(starts_with("Hacat_WT"), starts_with("Hacat_UVB"))
+rownames(tpm)=tpm[,19]
+BT_tpm <- tpm %>%
+select(starts_with("Hacat_WT"), starts_with("Hacat_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(BT_tpm, 1, function(x) {
+  wt  <- x[grepl("^Hacat_WT", names(x))]
+  uvb <- x[grepl("^Hacat_UVB", names(x))]
+  
+# At least one sample > cutoff  wt_expr  <- sum(wt  > cutoff, na.rm = TRUE)
+  uvb_expr <- sum(uvb > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(wt_expr > 0, uvb_expr > 0))
+  
+  # 1. At least two samples have values  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(wt_expr, uvb_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  #  3.Delete
+  return(FALSE)
+})
+
+BT_tpm_filtered <- BT_tpm[keep_gene, ]
+BT =  BT[rownames(BT) %in% rownames(BT_tpm),]
+group <- factor(c(rep("Hacat_WT", 3), rep("Hacat_UVB", 3)), levels = c("Hacat_WT", "Hacat_UVB"))
+y <- DGEList(counts = as.matrix(BT))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+#  Coef = 2
+res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+Hacat_BT = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(Hacat_BT)[8]='symbol'
+write.csv(Hacat_BT, "DE_Hacat_BT.csv")
+
+Hacat_BT_1.5= fc_function(Hacat_BT,1.5,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+Hacat_BT_result= fc_function(Hacat_BT,2,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+
+
+###Hacat_AB
+library(dplyr)
+library(limma)
+library(car)
+library(edgeR)
+library(limma)
+count = read.csv("count_filter.csv")
+tpm= read.csv("tpm.csv")
+rownames(count)= make.unique(count[,1])
+cutoff <- 0.5
+AB <- count %>%
+  select(starts_with("Hacat_UVB"), starts_with("Hacat_UA"))
+group <- factor(c(rep("Hacat_UVB", 3), rep("Hacat_UA", 3)), levels = c("Hacat_UVB", "Hacat_UA"))
+rownames(tpm)=tpm[,19]
+AB_tpm <- tpm %>%
+select(starts_with("Hacat_UA"), starts_with("Hacat_UVB"))
+cutoff <- 0.5
+
+keep_gene <- apply(AB_tpm, 1, function(x) {
+  UVB  <- x[grepl("^Hacat_UVB", names(x))]
+  UA <- x[grepl("^Hacat_UA", names(x))]
+  
+# At least one sample > cutoff  UVB_expr  <- sum(UVB  > cutoff, na.rm = TRUE)
+  UA_expr <- sum(UA > cutoff, na.rm = TRUE)
+  
+  n_group_expr <- sum(c(UVB_expr > 0, UA_expr > 0))
+  
+  # 1. At least two samples have values  if (n_group_expr >= 2) {
+    return(TRUE)
+  }
+  
+  # 2.Just one sample has value
+  if (n_group_expr == 1) {
+    if (max(UVB_expr, UA_expr) >= 2) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  }
+  
+  #  3.Delete
+  return(FALSE)
+})
+
+AB_tpm_filtered <- AB_tpm[keep_gene, ]
+AB =  AB[rownames(AB) %in% rownames(AB_tpm_filtered),]
+group <- factor(c(rep("Hacat_UVB", 3), rep("Hacat_UA", 3)), levels = c("Hacat_UVB", "Hacat_UA"))
+y <- DGEList(counts = as.matrix(AB))
+y <- calcNormFactors(y)  # TMM normalization
+design <- model.matrix(~ group)
+# Voom
+v <- voom(y, design = design, plot = TRUE)
+#  Construct a linear model and EBayes
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+# Coef = 2
+res <- topTable(fit, coef = 2, number = Inf, adjust.method = "BH")
+colnames(res)[4]='pvalue'
+colnames(res)[5]='padj'
+res$gene_id <- rownames(res)
+Hacat_AB = merge(res,count[,c(1,20,29)],by='gene_id')
+colnames(Hacat_AB)[8]='symbol'
+
+write.csv(Hacat_AB, "DE_Hacat_AB.csv")
+Hacat_AB_result= fc_function(Hacat_AB,1.5,p=0.05, padj = NULL, kegg = TRUE, GO = TRUE)
+

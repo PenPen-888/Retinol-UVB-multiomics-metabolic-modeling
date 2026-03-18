@@ -1,0 +1,231 @@
+##Transcriptome
+library(tidyverse)
+library(openxlsx)
+library(dplyr)
+
+count = read.xlsx("count.xlsx")
+expr_cols <- 2:19
+if (!"gene_length" %in% colnames(count)) {
+    stop("gene_length don't exist, can't calculate TPM")
+}
+gene_length_kb <- count$gene_length / 1000
+rpk <- sweep(count[, expr_cols], 1, gene_length_kb, FUN = "/")
+scaling_factor <- colSums(rpk, na.rm = TRUE)
+tpm <- sweep(rpk, 2, scaling_factor, FUN = "/") * 1e6
+
+tpm <- as.data.frame(tpm)
+rownames(tpm) <- count$gene_id
+colnames(tpm) <- colnames(count)[expr_cols]
+
+
+cutoff <- 0.5   
+groups <- list(
+  HFF_WT   = grep("^HFF_WT",  colnames(tpm), value = TRUE),
+  HFF_UVB  = grep("^HFF_UVB", colnames(tpm), value = TRUE),
+  HFF_UA   = grep("^HFF_UA",  colnames(tpm), value = TRUE),
+  Hacat_WT = grep("^Hacat_WT",  colnames(tpm), value = TRUE),
+  Hacat_UVB= grep("^Hacat_UVB", colnames(tpm), value = TRUE),
+  Hacat_UA = grep("^Hacat_UA",  colnames(tpm), value = TRUE)
+)
+group_means <- sapply(groups, function(cols) {
+  rowMeans(tpm[, cols, drop = FALSE], na.rm = TRUE)
+})
+keep_genes <- apply(tpm, 1, function(gene_expr) {
+  group_has_expr <- sapply(groups, function(cols) {
+    any(gene_expr[cols] > cutoff, na.rm = TRUE)
+  })
+  n_group_expr <- sum(group_has_expr)
+  if (n_group_expr == 1) {
+    the_group <- names(group_has_expr)[group_has_expr]
+    expr_vals <- gene_expr[groups[[the_group]]]
+    n_rep_gt <- sum(expr_vals > cutoff, na.rm = TRUE)
+    if (n_rep_gt <= 1) {
+      return(FALSE)
+    }
+  }
+  return(TRUE)
+})
+tpm_filtered <- tpm[keep_genes, ]
+tpm_filtered$gene_id <- rownames(tpm_filtered)
+tpm_yu = tpm[!(rownames(tpm) %in% tpm_filtered$gene_id), ]
+print(tpm_yu[1,])
+tpm_filtered <- merge(tpm_filtered, count[, c(1, 20:28)], by="gene_id")
+
+
+converted_ids <- bitr(count$gene_id, fromType = "ENSEMBL",
+                      toType = "ENTREZID",
+                      OrgDb = org.Hs.eg.db)
+colnames(converted_ids)=c('gene_id','geneID')
+
+write.csv(tpm_filtered,'tpm.csv',row.names = FALSE)
+count = count[count$gene_id%in% tpm_filtered$gene_id,]
+converted_ids <- bitr(count$gene_id, fromType = "ENSEMBL",
+                      toType = "ENTREZID",
+                      OrgDb = org.Hs.eg.db)
+colnames(converted_ids)=c('gene_id','geneID')
+
+count =left_join(count,converted_ids,by='gene_id')
+write.csv(count,'count_filter.csv',row.names = FALSE)
+
+####Proteome
+
+#Example： HFF:UVB
+
+library(ggplot2)
+library(ggrepel)
+ori = read.csv("HFF_UVB_ori.csv")
+rownames(ori)=ori[,1]
+ori = ori[,-1]
+ori[] <- lapply(ori, function(x) as.numeric(as.character(x)))
+ori_log = log2(ori + 1)
+ori_log$mean = rowMeans(ori_log[,c(1:3)])
+ori_log$Sd <- apply(ori_log[, 1:3], 1, sd)
+ori_log$cv = ori_log$Sd/ori_log$mean
+ori_log[is.na(ori_log)]=0
+abnormal = ori_log[ori_log$cv>0.4,]
+normal = ori_log[ori_log$cv<0.4|ori_log$cv==0.4,]
+#Classification
+data_columns <- c("HFF_UVB1","HFF_UVB2","HFF_UVB3")
+zero_count <- rowSums(abnormal[data_columns] == 0)
+# One column =0
+one_zero <- abnormal[zero_count == 1, ]
+# Two column =0
+two_zeros <- abnormal[zero_count == 2, ]
+# Remain data
+remaining <- abnormal[zero_count < 1 | zero_count > 2, ]
+one_zero$UVB <- apply(one_zero[data_columns], 1, function(row) {
+mean(row[row != 0], na.rm = TRUE)  # 计算非零列的均值
+})
+
+two_zeros$UVB <- apply(two_zeros[, data_columns], 1, function(row) {
+non_zero <- row[row > 0]
+if (length(non_zero) == 1) {
+cv <- 1.73
+alpha <- 0.1 
+weight <- 1 / (log2(cv + 1) + alpha * non_zero)
+weighted_value <- non_zero * weight
+} else {
+weighted_value <- NA
+}
+return(weighted_value)
+})
+compute_weighted_UVB <- function(data, cv_column, data_columns) {
+cv_values <- data[[cv_column]]
+data$UVB <- apply(data[, data_columns], 1, function(row) {
+if (all(row == 0)) return(NA)
+weights <- 1 / (cv_values + 1)
+weighted_UVB <- sum(row * weights, na.rm = TRUE) / sum(weights, na.rm = TRUE)
+return(weighted_UVB)
+})
+return(data)
+}
+normal_compute <- compute_weighted_UVB(data = normal,
+cv_column = "cv",
+data_columns = c("HFF_UVB1", "HFF_UVB2", "HFF_UVB3"))
+normal_compute[is.na(normal_compute)]=0
+UVB_all = rbind(normal_compute,one_zero)
+UVB_all = rbind(UVB_all,two_zeros)
+write.csv(UVB_all,'HFF_UVB_scale.csv')
+
+####Metabolome
+neg =read.csv("neg.csv")
+pos =read.csv("pos.csv")
+
+#QC Normalization
+all_meta = rbind(neg,pos)
+qc_cols <- grep("^QC", colnames(all_meta))
+all_meta$qc_m = rowMeans(all_meta[,qc_cols])
+all_meta$qc_sd <- apply(all_meta[, qc_cols], 1, sd, na.rm = TRUE)
+all_meta$QC_RSD <- (all_meta$qc_sd / all_meta$qc_m) * 100
+all_meta=all_meta[all_meta$QC_RSD<=30,]
+rownames(all_meta)=all_meta[,1]
+all_meta=all_meta[,-1]
+all_norm = sweep(all_meta[, -c(25:32)], 1, all_meta$qc_m, "/")
+
+#Classified by treatments
+cn <- colnames(all_norm)
+groups <- list(
+  HFF_WT  = grep("^HFF_WT",  cn),
+  HFF_UVB = grep("^HFF_UVB", cn),
+  HFF_UA  = grep("^HFF_UA",  cn),
+  Hacat_WT  = grep("^Hacat_WT",  cn),
+  Hacat_UVB = grep("^Hacat_UVB", cn),
+  Hacat_UA  = grep("^Hacat_UA",  cn)
+)
+g= factor(c(rep('HFF_UA',3),rep('HFF_UVB',3),rep('HFF_WT',3),rep('Hacat_UA',3),rep('Hacat_UVB',3),rep('Hacat_WT',3)))  
+design = data.frame(Group = g,Sample = cn)
+all_clean = all_norm 
+
+rsd_threshold <- 0.5
+
+for(i in 1:nrow(all_clean)) {
+  for(gname in names(groups)) {
+    cols <- groups[[gname]]      
+    vals <- as.numeric(all_clean[i, cols])
+    valid_idx <- !is.na(vals)
+    vals_valid <- vals[valid_idx]
+    if(length(vals_valid) >= 3.5) {
+      
+      # --- 1.Identify outliers
+      med_val <- median(vals_valid, na.rm = TRUE)
+      abs_diff <- abs(vals_valid - med_val)
+      mad_val <- median(abs_diff, na.rm = TRUE) * 1.4826 
+      if(mad_val == 0) mad_val <- mean(abs_diff, na.rm = TRUE) + 1e-6 
+      mod_z <- abs_diff / mad_val
+      
+      out_idx <- mod_z > 3.5
+      if(any(out_idx)) {
+        vals_valid[out_idx] <- median(vals_valid[!out_idx], na.rm = TRUE)
+      }
+      
+      # --- 2. Modify data with high variance
+      current_mean <- mean(vals_valid, na.rm = TRUE)
+      current_sd   <- sd(vals_valid, na.rm = TRUE)
+      
+      if(abs(current_mean) > 0) {
+        current_rsd <- current_sd / abs(current_mean)
+      } else {
+        current_rsd <- 0
+      }
+      
+      if(!is.na(current_rsd) && current_rsd > rsd_threshold) {
+        
+        comb_indices <- combn(length(vals_valid), 2)
+        pair_diffs <- apply(comb_indices, 2, function(idx) {
+          abs(vals_valid[idx[1]] - vals_valid[idx[2]])
+        })
+        best_pair_loc <- which.min(pair_diffs)
+        best_indices  <- comb_indices[, best_pair_loc]
+        good_mean <- mean(vals_valid[best_indices])
+       
+        all_indices <- 1:length(vals_valid)
+        bad_indices <- setdiff(all_indices, best_indices)
+        vals_valid[bad_indices] <- good_mean
+        
+      }
+      
+      vals[valid_idx] <- vals_valid
+      all_clean[i, cols] <- vals
+    }
+  }
+}
+
+group_means <- matrix(NA, nrow = nrow(all_clean), ncol = length(groups))
+colnames(group_means) <- names(groups)
+rownames(group_means) <- rownames(all_clean)
+# 2. Calculate the weighted average for each treatment
+for(gname in names(groups)) {
+  cols <- groups[[gname]]
+  sub_data <- all_clean[, cols]
+  my_weights <- rep(1, length(cols)) 
+  # apply(X, 1, FUN) 
+  group_means[, gname] <- apply(sub_data, 1, function(x) {
+    weighted.mean(x, w = my_weights, na.rm = TRUE)
+  })
+}
+all_clean_final <- cbind(all_clean, group_means)
+write.csv(all_clean_final,'all_clean_final.csv')
+HFF= all_clean_final[,grep('^HFF',colnames(all_clean_final))]
+Hacat= all_clean_final[,grep('^Hacat',colnames(all_clean_final))]
+write.csv(HFF,'HFF.csv')
+write.csv(Hacat,'Hacat.csv')

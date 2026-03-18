@@ -1,0 +1,51 @@
+library(tidyverse)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+options(timeout = 600) 
+
+####Example: HFF( UA vs UVB)
+pos =read.delim("pos.xls")
+neg =read.delim("neg.xls")
+all = rbind(neg,pos)
+all$Kegg_ID <- sub("^cpd:", "", all$Kegg_ID)
+
+AB =read.csv("HFF_AB.csv")
+AB_sig=read.csv("HFF_AB_sig.csv")
+
+
+colnames(AB)[1]='Name'
+AB = inner_join(AB,all,by='Name')
+term2gene <- AB %>%
+  dplyr::select(Kegg_map, Kegg_ID) %>%
+  dplyr::rename(term = Kegg_map, gene = Kegg_ID) %>%
+    separate_rows(term,sep = ';') %>%
+    distinct(term, gene) 
+metabo_genes <- AB_sig$Kegg_ID
+metabo_universe <- AB$Kegg_ID
+
+# ORA  enrich
+AB_metabo_ora <- enricher(
+    gene = metabo_genes,
+    universe = metabo_universe,
+    TERM2GENE = term2gene,
+    pvalueCutoff = 1,
+    qvalueCutoff = 1,
+    minGSSize = 1
+)
+
+AB_metabo_ora  = AB_metabo_ora@result
+AB_metabo_ora <- AB_metabo_ora %>%
+    separate(
+        col = Description,
+        into = c("ID", "Description"),
+        sep = "\\s{2,}",   
+        extra = "merge"    
+    )
+
+AB_metabo_ora=AB_metabo_ora %>%
+    separate_rows(geneID,sep='/')%>%
+    mutate(Kegg_ID=trimws(geneID))%>%
+    merge(AB_sig[,c(1,9)],by='Kegg_ID')%>%
+    group_by(Description)%>%
+    mutate(Name = paste(unique(Name),collapse = '/'))
+write.csv(AB_metabo_ora,'HFF_AB_kegg_meta.csv',row.names = FALSE)
