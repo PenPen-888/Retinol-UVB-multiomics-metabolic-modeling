@@ -1,0 +1,7 @@
+## Scripts
+
+The `scripts/` directory contains scripts for single-omics and cross-omics analyses, including standard data processing, statistical analysis, and basic integration steps.
+
+These analyses follow conventional workflows for transcriptomic, proteomic, and metabolomic data, such as differential analysis and correlation-based integration.  
+
+A custom script is provided to organize and streamline the analysis steps. The scripts are intended to reproduce the main results and may require minor adaptation depending on the computational environment.
