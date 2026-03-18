@@ -1,0 +1,6 @@
+- `structure_analysis/`  
+  Structural interpretation of context-specific metabolic models was performed using a workflow based on the Kiwi framework (https://github.com/SysBioChalmers/Kiwi), which integrates gene-set analysis results with metabolic network topology for enhanced biological interpretation :contentReference[oaicite:0]{index=0}.  
+
+  The original pipeline was adapted to ensure compatibility with updated Python environments and to fit the study-specific data structure. Modified scripts and auxiliary files required for the analysis are provided in this directory.  
+
+  This directory includes the workflow implementation, intermediate files, and visualization outputs for network-based interpretation.
